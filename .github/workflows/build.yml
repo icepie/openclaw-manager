@@ -126,6 +126,41 @@ jobs:
             src-tauri/target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
 
+  # ── Dev 预发布（每次 main 分支推送）──────────────────────────
+  dev-release:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    name: Dev Release
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create/Update dev release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dev
+          name: "Dev Build"
+          prerelease: true
+          body: |
+            自动构建自 `main` 分支，commit: ${{ github.sha }}
+
+            > 这是开发版本，不保证稳定性。正式版请查看 [Releases](../../releases)。
+          files: |
+            artifacts/**/*.dmg
+            artifacts/**/*.msi
+            artifacts/**/*.exe
+            artifacts/**/*.deb
+            artifacts/**/*.AppImage
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   # ── 发布 Release ───────────────────────────────────────────
   release:
     if: startsWith(github.ref, 'refs/tags/v')
