@@ -121,6 +121,21 @@ pub async fn run_doctor() -> Result<Vec<DiagnosticResult>, String> {
         },
     });
     
+    // 检查 Git
+    let git_check = shell::run_command_output("git", &["--version"]);
+    results.push(DiagnosticResult {
+        name: "Git".to_string(),
+        passed: git_check.is_ok(),
+        message: git_check
+            .clone()
+            .unwrap_or_else(|_| "未安装".to_string()),
+        suggestion: if git_check.is_err() {
+            Some("请安装 Git: https://git-scm.com".to_string())
+        } else {
+            None
+        },
+    });
+
     // 检查配置文件
     let config_path = platform::get_config_file_path();
     let config_exists = std::path::Path::new(&config_path).exists();

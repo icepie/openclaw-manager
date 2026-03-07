@@ -65,6 +65,7 @@ fn main() {
             diagnostics::start_channel_login,
             // 安装器
             installer::check_environment,
+            installer::install_git,
             installer::install_nodejs,
             installer::install_openclaw,
             installer::init_openclaw_config,

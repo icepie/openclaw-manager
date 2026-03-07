@@ -6,6 +6,10 @@ use log::{info, warn, error, debug};
 /// 环境检查结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnvironmentStatus {
+    /// Git 是否安装
+    pub git_installed: bool,
+    /// Git 版本
+    pub git_version: Option<String>,
     /// Node.js 是否安装
     pub node_installed: bool,
     /// Node.js 版本
@@ -48,7 +52,14 @@ pub async fn check_environment() -> Result<EnvironmentStatus, String> {
     
     let os = platform::get_os();
     info!("[环境检查] 操作系统: {}", os);
-    
+
+    // 检查 Git
+    info!("[环境检查] 检查 Git...");
+    let git_version = shell::run_command_output("git", &["--version"]).ok()
+        .map(|v| v.trim().to_string());
+    let git_installed = git_version.is_some();
+    info!("[环境检查] Git: installed={}, version={:?}", git_installed, git_version);
+
     // 检查 Node.js
     info!("[环境检查] 检查 Node.js...");
     let node_version = get_node_version();
@@ -69,10 +80,12 @@ pub async fn check_environment() -> Result<EnvironmentStatus, String> {
     let config_dir_exists = std::path::Path::new(&config_dir).exists();
     info!("[环境检查] 配置目录: {}, exists={}", config_dir, config_dir_exists);
     
-    let ready = node_installed && node_version_ok && openclaw_installed;
+    let ready = git_installed && node_installed && node_version_ok && openclaw_installed;
     info!("[环境检查] 环境就绪状态: ready={}", ready);
-    
+
     Ok(EnvironmentStatus {
+        git_installed,
+        git_version,
         node_installed,
         node_version,
         node_version_ok,
@@ -473,6 +486,137 @@ node --version
         Err(e) => Ok(InstallResult {
             success: false,
             message: "Node.js 安装失败".to_string(),
+            error: Some(e),
+        }),
+    }
+}
+
+/// 安装 Git
+#[command]
+pub async fn install_git() -> Result<InstallResult, String> {
+    info!("[安装Git] 开始安装 Git...");
+    let os = platform::get_os();
+    info!("[安装Git] 检测到操作系统: {}", os);
+
+    let result = match os.as_str() {
+        "windows" => install_git_windows().await,
+        "macos" => install_git_macos().await,
+        "linux" => install_git_linux().await,
+        _ => Ok(InstallResult {
+            success: false,
+            message: "不支持的操作系统".to_string(),
+            error: Some(format!("不支持的操作系统: {}", os)),
+        }),
+    };
+
+    match &result {
+        Ok(r) if r.success => info!("[安装Git] ✓ 安装成功"),
+        Ok(r) => warn!("[安装Git] ✗ 安装失败: {}", r.message),
+        Err(e) => error!("[安装Git] ✗ 安装错误: {}", e),
+    }
+
+    result
+}
+
+async fn install_git_windows() -> Result<InstallResult, String> {
+    let script = r#"
+$ErrorActionPreference = 'Stop'
+
+$gitVersion = git --version 2>$null
+if ($gitVersion) {
+    Write-Host "Git 已安装: $gitVersion"
+    exit 0
+}
+
+$hasWinget = Get-Command winget -ErrorAction SilentlyContinue
+if ($hasWinget) {
+    Write-Host "使用 winget 安装 Git..."
+    winget install --id Git.Git --accept-source-agreements --accept-package-agreements
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Git 安装成功！"
+        exit 0
+    }
+}
+
+Write-Host "Git 安装失败，请手动安装: https://git-scm.com"
+exit 1
+"#;
+
+    match shell::run_powershell_output(script) {
+        Ok(_) => {
+            if shell::run_command_output("git", &["--version"]).is_ok() {
+                Ok(InstallResult {
+                    success: true,
+                    message: "Git 安装成功！请重启应用以使环境变量生效。".to_string(),
+                    error: None,
+                })
+            } else {
+                Ok(InstallResult {
+                    success: false,
+                    message: "安装后需要重启应用".to_string(),
+                    error: None,
+                })
+            }
+        }
+        Err(e) => Ok(InstallResult {
+            success: false,
+            message: "Git 安装失败".to_string(),
+            error: Some(e),
+        }),
+    }
+}
+
+async fn install_git_macos() -> Result<InstallResult, String> {
+    let script = r#"
+if ! command -v brew &> /dev/null; then
+    echo "安装 Homebrew..."
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    if [[ -f /opt/homebrew/bin/brew ]]; then
+        eval "$(/opt/homebrew/bin/brew shellenv)"
+    fi
+fi
+brew install git
+"#;
+
+    match shell::run_bash_output(script) {
+        Ok(_) => Ok(InstallResult {
+            success: true,
+            message: "Git 安装成功！".to_string(),
+            error: None,
+        }),
+        Err(e) => Ok(InstallResult {
+            success: false,
+            message: "Git 安装失败".to_string(),
+            error: Some(e),
+        }),
+    }
+}
+
+async fn install_git_linux() -> Result<InstallResult, String> {
+    let script = r#"
+if command -v apt-get &> /dev/null; then
+    sudo apt-get update && sudo apt-get install -y git
+elif command -v dnf &> /dev/null; then
+    sudo dnf install -y git
+elif command -v yum &> /dev/null; then
+    sudo yum install -y git
+elif command -v pacman &> /dev/null; then
+    sudo pacman -S --noconfirm git
+else
+    echo "未找到支持的包管理器"
+    exit 1
+fi
+"#;
+
+    match shell::run_bash_output(script) {
+        Ok(_) => Ok(InstallResult {
+            success: true,
+            message: "Git 安装成功！".to_string(),
+            error: None,
+        }),
+        Err(e) => Ok(InstallResult {
+            success: false,
+            message: "Git 安装失败".to_string(),
             error: Some(e),
         }),
     }

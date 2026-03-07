@@ -9,11 +9,14 @@ import {
   RefreshCw,
   ExternalLink,
   Cpu,
-  Package
+  Package,
+  GitBranch
 } from 'lucide-react';
 import { setupLogger } from '../../lib/logger';
 
 interface EnvironmentStatus {
+  git_installed: boolean;
+  git_version: string | null;
   node_installed: boolean;
   node_version: string | null;
   node_version_ok: boolean;
@@ -39,7 +42,7 @@ interface SetupProps {
 export function Setup({ onComplete, embedded = false }: SetupProps) {
   const [envStatus, setEnvStatus] = useState<EnvironmentStatus | null>(null);
   const [checking, setChecking] = useState(true);
-  const [installing, setInstalling] = useState<'nodejs' | 'openclaw' | null>(null);
+  const [installing, setInstalling] = useState<'git' | 'nodejs' | 'openclaw' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<'check' | 'install' | 'complete'>('check');
 
@@ -73,6 +76,27 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
     setupLogger.info('Setup 组件初始化');
     checkEnvironment();
   }, []);
+
+  const handleInstallGit = async () => {
+    setupLogger.action('安装 Git');
+    setInstalling('git');
+    setError(null);
+    try {
+      const result = await invoke<InstallResult>('install_git');
+      if (result.success) {
+        setupLogger.info('✅ Git 安装成功');
+        await checkEnvironment();
+      } else if (result.message.includes('重启')) {
+        setError('Git 安装完成，请重启应用以使环境变量生效');
+      } else {
+        setError(result.error || 'Git 安装失败，请手动安装: https://git-scm.com');
+      }
+    } catch (e) {
+      setError(`Git 安装失败: ${e}`);
+    } finally {
+      setInstalling(null);
+    }
+  };
 
   const handleInstallNodejs = async () => {
     setupLogger.action('安装 Node.js');
@@ -187,6 +211,46 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
                 <span className="text-dark-200">{getOsName(envStatus.os)}</span>
               </div>
             )}
+
+            {/* Git 状态 */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${envStatus.git_installed
+                    ? 'bg-green-500/20 text-green-400'
+                    : 'bg-red-500/20 text-red-400'
+                  }`}>
+                  <GitBranch className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-white font-medium">Git</p>
+                  <p className="text-sm text-dark-400">
+                    {envStatus.git_version || '未安装'}
+                  </p>
+                </div>
+              </div>
+
+              {envStatus.git_installed ? (
+                <CheckCircle2 className="w-6 h-6 text-green-400" />
+              ) : (
+                <button
+                  onClick={handleInstallGit}
+                  disabled={installing !== null}
+                  className="btn-primary text-sm px-4 py-2 flex items-center gap-2"
+                >
+                  {installing === 'git' ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      安装中...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4" />
+                      安装
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
 
             {/* Node.js 状态 */}
             <div className="flex items-center justify-between">
