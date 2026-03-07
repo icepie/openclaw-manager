@@ -160,7 +160,7 @@ function ProviderDialog({ officialProviders, onClose, onSave, editingProvider }:
   const handleSelectCustom = () => {
     setSelectedOfficial(null);
     setProviderName('');
-    setBaseUrl('');
+    setBaseUrl('https://nicerouter.com');
     setApiType('openai-completions');
     setSelectedModels([]);
     setFormError(null);
@@ -378,7 +378,7 @@ function ProviderDialog({ officialProviders, onClose, onSave, editingProvider }:
                     type="text"
                     value={baseUrl}
                     onChange={e => { setFormError(null); setBaseUrl(e.target.value); }}
-                    placeholder="https://api.example.com/v1"
+                    placeholder="https://nicerouter.com"
                     className="input-base"
                   />
                 </div>
