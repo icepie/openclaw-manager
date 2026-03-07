@@ -359,19 +359,37 @@ if ($hasWinget) {
     }
 }
 
-# 备用方案：使用 fnm (Fast Node Manager)
+# 备用方案：使用 fnm (Fast Node Manager)，优先国内镜像
 Write-Host "尝试使用 fnm 安装 Node.js..."
-$fnmInstallScript = "irm https://fnm.vercel.app/install.ps1 | iex"
-Invoke-Expression $fnmInstallScript
 
-# 配置 fnm 环境
-$env:FNM_DIR = "$env:USERPROFILE\.fnm"
-$env:Path = "$env:FNM_DIR;$env:Path"
+# 尝试从 npmmirror 安装 fnm
+$fnmInstalled = $false
+try {
+    Write-Host "尝试从国内镜像安装 fnm..."
+    $env:FNM_NODE_DIST_MIRROR = "https://npmmirror.com/mirrors/node/"
+    irm https://fnm.vercel.app/install.ps1 | iex
+    $fnmInstalled = $true
+} catch {
+    Write-Host "国内镜像失败，尝试官方源..."
+    try {
+        irm https://fnm.vercel.app/install.ps1 | iex
+        $fnmInstalled = $true
+    } catch {
+        Write-Host "fnm 安装失败: $_"
+    }
+}
 
-# 安装 Node.js 22
-fnm install 22
-fnm default 22
-fnm use 22
+if ($fnmInstalled) {
+    # 配置 fnm 环境
+    $env:FNM_DIR = "$env:USERPROFILE\.fnm"
+    $env:Path = "$env:FNM_DIR;$env:Path"
+    $env:FNM_NODE_DIST_MIRROR = "https://npmmirror.com/mirrors/node/"
+
+    # 安装 Node.js 22
+    fnm install 22
+    fnm default 22
+    fnm use 22
+}
 
 # 验证安装
 $nodeVersion = node --version 2>$null
@@ -411,14 +429,20 @@ if ($nodeVersion) {
 
 /// macOS 安装 Node.js
 async fn install_nodejs_macos() -> Result<InstallResult, String> {
-    // 使用 Homebrew 安装
+    // 使用 Homebrew 安装，优先 TUNA 镜像
     let script = r#"
+# 设置 Homebrew 国内镜像（TUNA）
+export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git"
+export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git"
+export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles"
+export HOMEBREW_API_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api"
+
 # 检查 Homebrew
 if ! command -v brew &> /dev/null; then
-    echo "安装 Homebrew..."
+    echo "安装 Homebrew（使用 TUNA 镜像）..."
+    /bin/bash -c "$(curl -fsSL https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/install/HEAD/install.sh)" || \
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    
-    # 配置 PATH
+
     if [[ -f /opt/homebrew/bin/brew ]]; then
         eval "$(/opt/homebrew/bin/brew shellenv)"
     elif [[ -f /usr/local/bin/brew ]]; then
@@ -450,23 +474,52 @@ node --version
 
 /// Linux 安装 Node.js
 async fn install_nodejs_linux() -> Result<InstallResult, String> {
-    // 使用 NodeSource 仓库安装
+    // 优先用 fnm + npmmirror，回退到系统包管理器
     let script = r#"
-# 检测包管理器
+export FNM_NODE_DIST_MIRROR=https://npmmirror.com/mirrors/node/
+export FNM_DIR="$HOME/.fnm"
+export PATH="$FNM_DIR:$PATH"
+
+install_via_fnm() {
+    # 尝试安装 fnm
+    if curl -fsSL https://fnm.vercel.app/install.sh | bash 2>/dev/null; then
+        echo "fnm 安装成功"
+    else
+        return 1
+    fi
+
+    # 加载 fnm
+    export PATH="$FNM_DIR:$PATH"
+    eval "$(fnm env --use-on-cd 2>/dev/null || true)"
+
+    # 安装 Node.js 22（使用 npmmirror）
+    FNM_NODE_DIST_MIRROR=https://npmmirror.com/mirrors/node/ fnm install 22
+    fnm default 22
+    fnm use 22
+    node --version
+}
+
+# 先尝试 fnm
+if install_via_fnm; then
+    echo "Node.js 通过 fnm 安装成功"
+    exit 0
+fi
+
+# 回退到系统包管理器
+echo "fnm 安装失败，尝试系统包管理器..."
 if command -v apt-get &> /dev/null; then
-    echo "检测到 apt，使用 NodeSource 仓库..."
-    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-    sudo apt-get install -y nodejs
+    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && \
+    sudo apt-get install -y nodejs || \
+    sudo apt-get install -y nodejs npm
 elif command -v dnf &> /dev/null; then
-    echo "检测到 dnf，使用 NodeSource 仓库..."
-    curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo bash -
-    sudo dnf install -y nodejs
+    curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo bash - && \
+    sudo dnf install -y nodejs || \
+    sudo dnf install -y nodejs npm
 elif command -v yum &> /dev/null; then
-    echo "检测到 yum，使用 NodeSource 仓库..."
-    curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo bash -
-    sudo yum install -y nodejs
+    curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo bash - && \
+    sudo yum install -y nodejs || \
+    sudo yum install -y nodejs npm
 elif command -v pacman &> /dev/null; then
-    echo "检测到 pacman..."
     sudo pacman -S nodejs npm --noconfirm
 else
     echo "无法检测到支持的包管理器"
@@ -568,8 +621,14 @@ exit 1
 
 async fn install_git_macos() -> Result<InstallResult, String> {
     let script = r#"
+export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git"
+export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git"
+export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles"
+export HOMEBREW_API_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api"
+
 if ! command -v brew &> /dev/null; then
-    echo "安装 Homebrew..."
+    echo "安装 Homebrew（使用 TUNA 镜像）..."
+    /bin/bash -c "$(curl -fsSL https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/install/HEAD/install.sh)" || \
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
     if [[ -f /opt/homebrew/bin/brew ]]; then
         eval "$(/opt/homebrew/bin/brew shellenv)"
@@ -661,8 +720,13 @@ if (-not $nodeVersion) {
     exit 1
 }
 
-Write-Host "使用 npm 安装 OpenClaw..."
-npm install -g openclaw@latest --unsafe-perm
+# 优先使用国内镜像
+Write-Host "使用 npm 安装 OpenClaw（国内镜像）..."
+npm install -g openclaw@latest --registry https://registry.npmmirror.com --unsafe-perm
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "国内镜像失败，尝试官方源..."
+    npm install -g openclaw@latest --unsafe-perm
+}
 
 # 验证安装
 $openclawVersion = openclaw --version 2>$null
@@ -708,7 +772,9 @@ if ! command -v node &> /dev/null; then
     exit 1
 fi
 
-echo "使用 npm 安装 OpenClaw..."
+# 优先使用国内镜像
+echo "使用 npm 安装 OpenClaw（国内镜像）..."
+npm install -g openclaw@latest --registry https://registry.npmmirror.com --unsafe-perm || \
 npm install -g openclaw@latest --unsafe-perm
 
 # 验证安装
@@ -855,11 +921,18 @@ echo "    Node.js 安装向导"
 echo "========================================"
 echo ""
 
+# 设置 Homebrew 国内镜像（TUNA）
+export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git"
+export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git"
+export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles"
+export HOMEBREW_API_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api"
+
 # 检查 Homebrew
 if ! command -v brew &> /dev/null; then
-    echo "正在安装 Homebrew..."
+    echo "正在安装 Homebrew（使用 TUNA 镜像）..."
+    /bin/bash -c "$(curl -fsSL https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/install/HEAD/install.sh)" || \
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    
+
     if [[ -f /opt/homebrew/bin/brew ]]; then
         eval "$(/opt/homebrew/bin/brew shellenv)"
     elif [[ -f /usr/local/bin/brew ]]; then
@@ -908,8 +981,12 @@ Write-Host "    OpenClaw 安装向导" -ForegroundColor White
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-Write-Host "正在安装 OpenClaw..." -ForegroundColor Yellow
-npm install -g openclaw@latest
+Write-Host "正在安装 OpenClaw（国内镜像）..." -ForegroundColor Yellow
+npm install -g openclaw@latest --registry https://registry.npmmirror.com
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "国内镜像失败，尝试官方源..." -ForegroundColor Yellow
+    npm install -g openclaw@latest
+}
 
 Write-Host ""
 Write-Host "初始化配置..."
@@ -932,7 +1009,8 @@ echo "    OpenClaw 安装向导"
 echo "========================================"
 echo ""
 
-echo "正在安装 OpenClaw..."
+echo "正在安装 OpenClaw（国内镜像）..."
+npm install -g openclaw@latest --registry https://registry.npmmirror.com || \
 npm install -g openclaw@latest
 
 echo ""
@@ -974,7 +1052,8 @@ echo "    OpenClaw 安装向导"
 echo "========================================"
 echo ""
 
-echo "正在安装 OpenClaw..."
+echo "正在安装 OpenClaw（国内镜像）..."
+npm install -g openclaw@latest --registry https://registry.npmmirror.com || \
 npm install -g openclaw@latest
 
 echo ""
