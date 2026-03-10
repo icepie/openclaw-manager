@@ -144,105 +144,98 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
   const needsSetup = envStatus && !envStatus.ready;
 
   return (
-    <div className="h-full overflow-y-auto scroll-container pr-2">
+    <div className="h-full overflow-y-auto scroll-container">
       <motion.div
         variants={containerVariants}
         initial="hidden"
         animate="show"
-        className="space-y-6"
+        className="space-y-4 max-w-3xl"
       >
-        {/* 环境安装向导（仅在需要时显示） */}
+        {/* 环境安装向导 */}
         {needsSetup && (
           <motion.div variants={itemVariants}>
             <Setup onComplete={onSetupComplete} embedded />
           </motion.div>
         )}
 
-        {/* 服务状态卡片 */}
-        <motion.div variants={itemVariants}>
-          <StatusCard status={status} loading={loading} />
-        </motion.div>
-
-        {/* 快捷操作 */}
-        <motion.div variants={itemVariants}>
-          <QuickActions
-            status={status}
-            loading={actionLoading}
-            onStart={handleStart}
-            onStop={handleStop}
-            onRestart={handleRestart}
-          />
+        {/* 状态 + 操作 两列 */}
+        <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+          <div className="sm:col-span-3">
+            <StatusCard status={status} loading={loading} />
+          </div>
+          <div className="sm:col-span-2">
+            <QuickActions
+              status={status}
+              loading={actionLoading}
+              onStart={handleStart}
+              onStop={handleStop}
+              onRestart={handleRestart}
+            />
+          </div>
         </motion.div>
 
         {/* 实时日志 */}
         <motion.div variants={itemVariants}>
-          <div className="bg-dark-700 rounded-2xl border border-dark-500 overflow-hidden">
-            {/* 日志标题栏 */}
-            <div 
-              className="flex items-center justify-between px-4 py-3 bg-dark-600/50 cursor-pointer"
+          <div className="card overflow-hidden">
+            <div
+              className="flex items-center justify-between px-4 py-2.5 cursor-pointer
+                border-b border-gray-100 dark:border-white/[0.06]
+                hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors"
               onClick={() => setLogsExpanded(!logsExpanded)}
             >
               <div className="flex items-center gap-2">
-                <Terminal size={16} className="text-gray-500" />
-                <span className="text-sm font-medium text-white">实时日志</span>
-                <span className="text-xs text-gray-500">
-                  ({logs.length} 行)
+                <Terminal size={13} className="text-gray-400" />
+                <span className="text-xs font-medium text-gray-700 dark:text-gray-300">实时日志</span>
+                <span className="text-[11px] text-gray-400 dark:text-gray-600 tabular-nums">
+                  {logs.length} 行
                 </span>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 {logsExpanded && (
                   <>
-                    <label 
-                      className="flex items-center gap-2 text-xs text-gray-400"
+                    <label
+                      className="flex items-center gap-1.5 text-[11px] text-gray-400 cursor-pointer"
                       onClick={e => e.stopPropagation()}
                     >
                       <input
                         type="checkbox"
                         checked={autoRefreshLogs}
-                        onChange={(e) => setAutoRefreshLogs(e.target.checked)}
-                        className="w-3 h-3 rounded border-dark-500 bg-dark-600 text-claw-500"
+                        onChange={e => setAutoRefreshLogs(e.target.checked)}
+                        className="w-3 h-3 rounded accent-claw-500"
                       />
                       自动刷新
                     </label>
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        fetchLogs();
-                      }}
-                      className="text-gray-500 hover:text-white"
-                      title="刷新日志"
+                      onClick={e => { e.stopPropagation(); fetchLogs(); }}
+                      className="icon-btn p-1"
                     >
-                      <RefreshCw size={14} />
+                      <RefreshCw size={12} />
                     </button>
                   </>
                 )}
-                {logsExpanded ? (
-                  <ChevronUp size={16} className="text-gray-500" />
-                ) : (
-                  <ChevronDown size={16} className="text-gray-500" />
-                )}
+                {logsExpanded
+                  ? <ChevronUp size={13} className="text-gray-400" />
+                  : <ChevronDown size={13} className="text-gray-400" />
+                }
               </div>
             </div>
 
-            {/* 日志内容 */}
             {logsExpanded && (
-              <div ref={logsContainerRef} className="h-64 overflow-y-auto p-4 font-mono text-xs leading-relaxed bg-dark-800">
+              <div
+                ref={logsContainerRef}
+                className="h-56 overflow-y-auto p-3 font-mono text-[11px] leading-relaxed
+                  bg-gray-950 dark:bg-black/40"
+              >
                 {logs.length === 0 ? (
-                  <div className="h-full flex items-center justify-center text-gray-500">
-                    <p>暂无日志，请先启动服务</p>
+                  <div className="h-full flex items-center justify-center text-gray-600">
+                    暂无日志，请先启动服务
                   </div>
                 ) : (
-                  <>
-                    {logs.map((line, index) => (
-                      <div
-                        key={index}
-                        className={clsx('py-0.5 whitespace-pre-wrap break-all', getLogLineClass(line))}
-                      >
-                        {line}
-                      </div>
-                    ))}
-
-                  </>
+                  logs.map((line, i) => (
+                    <div key={i} className={clsx('py-px whitespace-pre-wrap break-all', getLogLineClass(line))}>
+                      {line}
+                    </div>
+                  ))
                 )}
               </div>
             )}

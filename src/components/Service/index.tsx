@@ -75,7 +75,7 @@ export function ServiceManager() {
     if (line.includes('info') || line.includes('Info') || line.includes('INFO')) {
       return 'text-green-400';
     }
-    return 'text-gray-400';
+    return 'text-gray-500 dark:text-gray-400';
   };
 
   return (
@@ -138,19 +138,19 @@ export function ServiceManager() {
         <div className="flex-1" />
 
         <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 text-sm text-gray-400">
+          <label className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
             <input
               type="checkbox"
               checked={autoRefresh}
               onChange={(e) => setAutoRefresh(e.target.checked)}
-              className="w-4 h-4 rounded border-dark-500 bg-dark-600 text-claw-500 focus:ring-claw-500"
+              className="w-4 h-4 rounded border-gray-200 dark:border-dark-500 bg-gray-50 dark:bg-dark-600 text-claw-500 focus:ring-claw-500"
             />
             自动刷新
           </label>
 
           <button
             onClick={fetchLogs}
-            className="icon-button text-gray-400 hover:text-white"
+            className="icon-button text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
           >
             <RefreshCw size={16} />
           </button>
@@ -158,11 +158,11 @@ export function ServiceManager() {
       </div>
 
       {/* 日志查看器 */}
-      <div className="flex-1 bg-dark-800 rounded-xl border border-dark-600 overflow-hidden flex flex-col">
+      <div className="flex-1 bg-gray-900 dark:bg-dark-800 rounded-xl border border-gray-300 dark:border-dark-600 overflow-hidden flex flex-col">
         {/* 日志标题栏 */}
-        <div className="flex items-center gap-2 px-4 py-2 bg-dark-700 border-b border-dark-600">
+        <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-dark-700 border-b border-gray-300 dark:border-dark-600">
           <Terminal size={14} className="text-gray-500" />
-          <span className="text-xs text-gray-400 font-medium">
+          <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
             /tmp/openclaw-gateway.log
           </span>
           <div className="flex-1" />

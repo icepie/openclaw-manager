@@ -2,7 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 基础样式 */
 * {
   margin: 0;
   padding: 0;
@@ -14,183 +13,119 @@ html, body, #root {
   overflow: hidden;
 }
 
+/* 亮色主题 */
+:root {
+  color-scheme: light;
+}
+
+/* 暗色主题 */
+.dark {
+  color-scheme: dark;
+}
+
 body {
   font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
-  background-color: #0a0a0b;
-  color: #e5e5e5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  @apply bg-gray-50 dark:bg-[#0d0d0f] text-gray-900 dark:text-gray-100;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-/* macOS 标题栏拖拽区域 */
-.titlebar-drag {
-  -webkit-app-region: drag;
-}
+/* macOS 标题栏 */
+.titlebar-drag { -webkit-app-region: drag; }
+.titlebar-no-drag { -webkit-app-region: no-drag; }
 
-.titlebar-no-drag {
-  -webkit-app-region: no-drag;
-}
-
-/* 自定义选择样式 */
+/* 选中 */
 ::selection {
-  background-color: rgba(249, 77, 58, 0.3);
-  color: white;
+  @apply bg-claw-500/20 text-claw-700 dark:text-claw-300;
 }
 
-/* 输入框焦点样式 */
-input:focus, textarea:focus, select:focus {
-  outline: none;
+/* 输入框 */
+input:focus, textarea:focus, select:focus { outline: none; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* 滚动条 */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 dark:bg-white/10 rounded-full;
 }
 
-/* 按钮禁用状态 */
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+/* 滚动容器 */
+.scroll-container { overflow-y: auto; scrollbar-gutter: stable; }
 
-/* 动画工具类 */
-@layer utilities {
-  .animate-in {
-    animation: fadeIn 0.3s ease-out;
-  }
-  
-  .slide-in-right {
-    animation: slideInRight 0.3s ease-out;
-  }
-  
-  .slide-in-up {
-    animation: slideUp 0.3s ease-out;
-  }
-  
-  @keyframes slideInRight {
-    from {
-      transform: translateX(20px);
-      opacity: 0;
-    }
-    to {
-      transform: translateX(0);
-      opacity: 1;
-    }
-  }
-  
-  /* 发光脉冲 */
-  .glow-pulse {
-    animation: glowPulse 2s ease-in-out infinite;
-  }
-  
-  @keyframes glowPulse {
-    0%, 100% {
-      box-shadow: 0 0 5px rgba(249, 77, 58, 0.4);
-    }
-    50% {
-      box-shadow: 0 0 20px rgba(249, 77, 58, 0.6);
-    }
-  }
-}
-
-/* 滚动条容器 */
-.scroll-container {
-  overflow-y: auto;
-  scrollbar-gutter: stable;
-}
-
-/* 代码块样式 */
-.code-block {
-  font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
-  background: #1a1a1d;
-  border: 1px solid #2e2e33;
-  border-radius: 8px;
-  padding: 12px 16px;
-  font-size: 13px;
-  line-height: 1.5;
-  overflow-x: auto;
-}
-
-/* 卡片悬浮效果 */
-.card-hover {
-  transition: all 0.2s ease;
-}
-
-.card-hover:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
-}
-
-/* 玻璃效果 */
-.glass {
-  background: rgba(26, 26, 29, 0.8);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-
-/* 状态指示器 */
+/* 状态点 */
 .status-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
+  flex-shrink: 0;
 }
-
 .status-dot.running {
-  background: #4ade80;
-  box-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
-  animation: pulse 2s infinite;
+  background: #22c55e;
+  box-shadow: 0 0 0 2px rgba(34,197,94,0.2);
+  animation: statusPulse 2s ease-in-out infinite;
+}
+.status-dot.stopped { background: #ef4444; }
+.status-dot.warning { background: #f59e0b; }
+
+@keyframes statusPulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(34,197,94,0.2); }
+  50% { box-shadow: 0 0 0 4px rgba(34,197,94,0.1); }
 }
 
-.status-dot.stopped {
-  background: #ef4444;
+/* 卡片 */
+.card {
+  @apply bg-white dark:bg-white/[0.04] border border-gray-100 dark:border-white/[0.06] rounded-xl;
 }
 
-.status-dot.warning {
-  background: #fbbf24;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.6;
-  }
-}
-
-/* 渐变背景 */
-.bg-gradient-radial {
-  background: radial-gradient(ellipse at top, rgba(249, 77, 58, 0.1) 0%, transparent 50%);
-}
-
-/* 图标按钮 */
-.icon-button {
-  @apply p-2 rounded-lg transition-colors;
-  @apply hover:bg-dark-500 active:bg-dark-400;
-}
-
-/* 输入框通用样式 */
+/* 输入框 */
 .input-base {
-  @apply w-full px-4 py-3 rounded-lg;
-  @apply bg-dark-700 border border-dark-500;
-  @apply text-white placeholder-gray-500;
-  @apply focus:border-claw-500 focus:ring-1 focus:ring-claw-500/50;
-  @apply transition-all duration-200;
+  @apply w-full px-3 py-2 rounded-lg text-sm;
+  @apply bg-gray-100 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08];
+  @apply text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-600;
+  @apply focus:border-claw-500/60 focus:ring-2 focus:ring-claw-500/10;
+  @apply transition-all duration-150;
 }
 
-/* 按钮通用样式 */
+/* 按钮 */
 .btn-primary {
-  @apply px-6 py-3 rounded-lg font-medium;
-  @apply bg-claw-500 text-white;
-  @apply hover:bg-claw-600 active:bg-claw-700;
-  @apply transition-all duration-200;
-  @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium;
+  @apply bg-claw-500 text-white hover:bg-claw-600 active:bg-claw-700;
+  @apply transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
 }
 
 .btn-secondary {
-  @apply px-6 py-3 rounded-lg font-medium;
-  @apply bg-dark-600 text-white border border-dark-400;
-  @apply hover:bg-dark-500 active:bg-dark-400;
-  @apply transition-all duration-200;
+  @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium;
+  @apply bg-gray-100 dark:bg-white/[0.06] text-gray-700 dark:text-gray-300;
+  @apply border border-gray-200 dark:border-white/[0.08];
+  @apply hover:bg-gray-200 dark:hover:bg-white/[0.1] transition-all duration-150;
 }
 
 .btn-ghost {
-  @apply px-4 py-2 rounded-lg font-medium;
-  @apply text-gray-400 hover:text-white hover:bg-dark-600;
-  @apply transition-all duration-200;
+  @apply inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm;
+  @apply text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100;
+  @apply hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-all duration-150;
+}
+
+.icon-btn {
+  @apply p-1.5 rounded-lg text-gray-400 dark:text-gray-500;
+  @apply hover:text-gray-700 dark:hover:text-gray-200;
+  @apply hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-all duration-150;
+}
+
+/* 代码 */
+.code-block {
+  font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
+  @apply bg-gray-100 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.06];
+  @apply rounded-lg px-4 py-3 text-xs leading-relaxed overflow-x-auto;
+}
+
+/* 动画 */
+@layer utilities {
+  .animate-in { animation: fadeIn 0.2s ease-out; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
 }

@@ -200,13 +200,13 @@ function App() {
   // 正在检查环境
   if (isReady === null) {
     return (
-      <div className="flex h-screen bg-dark-900 items-center justify-center">
+      <div className="flex h-screen bg-gray-50 dark:bg-dark-900 items-center justify-center">
         <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
         <div className="relative z-10 text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-brand-500 to-purple-600 mb-4 animate-pulse">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-claw-400 to-claw-600 mb-4 animate-pulse">
             <span className="text-3xl">🦞</span>
           </div>
-          <p className="text-dark-400">正在启动...</p>
+          <p className="text-gray-500 dark:text-gray-400">正在启动...</p>
         </div>
       </div>
     );
@@ -214,7 +214,7 @@ function App() {
 
   // 主界面
   return (
-    <div className="flex h-screen bg-dark-900 overflow-hidden">
+    <div className="flex h-screen bg-gray-50 dark:bg-[#0d0d0f] overflow-hidden">
       {/* 背景装饰 */}
       <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
       
@@ -298,7 +298,7 @@ function App() {
         <Header currentPage={currentPage} />
         
         {/* 页面内容 */}
-        <main className="flex-1 overflow-hidden p-6">
+        <main className="flex-1 overflow-hidden p-5">
           {renderPage()}
         </main>
       </div>

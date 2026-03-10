@@ -125,16 +125,15 @@ export function Logs() {
   };
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden gap-3">
       {/* 工具栏 */}
-      <div className="flex items-center gap-4 mb-4 flex-wrap">
-        {/* 级别过滤 */}
-        <div className="flex items-center gap-2">
-          <Filter size={14} className="text-gray-500" />
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5">
+          <Filter size={13} className="text-gray-400" />
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as FilterLevel)}
-            className="bg-dark-700 border border-dark-500 rounded-lg px-3 py-1.5 text-sm text-gray-300"
+            className="bg-white dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs text-gray-700 dark:text-gray-300"
           >
             <option value="all">所有级别</option>
             <option value="debug">Debug</option>
@@ -148,7 +147,7 @@ export function Logs() {
         <select
           value={moduleFilter}
           onChange={(e) => setModuleFilter(e.target.value)}
-          className="bg-dark-700 border border-dark-500 rounded-lg px-3 py-1.5 text-sm text-gray-300"
+          className="bg-white dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs text-gray-700 dark:text-gray-300"
         >
           <option value="all">所有模块</option>
           {modules.map(module => (
@@ -156,56 +155,42 @@ export function Logs() {
           ))}
         </select>
 
-        <div className="flex-1" />
-
         {/* 统计 */}
-        <div className="flex items-center gap-3 text-xs text-gray-500">
-          <span>{filteredLogs.length} / {logs.length} 条</span>
+        <div className="flex items-center gap-2 text-[11px] text-gray-400">
+          <span>{filteredLogs.length}/{logs.length}</span>
           <span className="text-red-400">{logs.filter(l => l.level === 'error').length} 错误</span>
-          <span className="text-yellow-400">{logs.filter(l => l.level === 'warn').length} 警告</span>
+          <span className="text-amber-400">{logs.filter(l => l.level === 'warn').length} 警告</span>
         </div>
 
-        {/* 操作按钮 */}
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1 text-xs text-gray-400">
+        {/* 操作 */}
+        <div className="flex items-center gap-1">
+          <label className="flex items-center gap-1 text-[11px] text-gray-400 cursor-pointer">
             <input
               type="checkbox"
               checked={autoScroll}
               onChange={(e) => setAutoScroll(e.target.checked)}
-              className="w-3 h-3 rounded"
+              className="w-3 h-3 rounded accent-claw-500"
             />
             自动滚动
           </label>
-          <button
-            onClick={handleExport}
-            className="icon-button text-gray-400 hover:text-white"
-            title="导出日志"
-          >
-            <Download size={16} />
+          <button onClick={handleExport} className="icon-btn" title="导出">
+            <Download size={14} />
           </button>
-          <button
-            onClick={() => setLogs(logStore.getAll())}
-            className="icon-button text-gray-400 hover:text-white"
-            title="刷新"
-          >
-            <RefreshCw size={16} />
+          <button onClick={() => setLogs(logStore.getAll())} className="icon-btn" title="刷新">
+            <RefreshCw size={14} />
           </button>
-          <button
-            onClick={handleClear}
-            className="icon-button text-gray-400 hover:text-red-400"
-            title="清除日志"
-          >
-            <Trash2 size={16} />
+          <button onClick={handleClear} className="icon-btn hover:text-red-500" title="清除">
+            <Trash2 size={14} />
           </button>
         </div>
       </div>
 
       {/* 日志列表 */}
-      <div className="flex-1 bg-dark-800 rounded-xl border border-dark-600 overflow-hidden flex flex-col">
+      <div className="flex-1 rounded-xl border border-gray-200 dark:border-white/[0.06] overflow-hidden flex flex-col bg-gray-950 dark:bg-black/40">
         {/* 标题栏 */}
-        <div className="flex items-center gap-2 px-4 py-2 bg-dark-700 border-b border-dark-600">
-          <Terminal size={14} className="text-gray-500" />
-          <span className="text-xs text-gray-400 font-medium">应用日志</span>
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-800 dark:border-white/[0.06]">
+          <Terminal size={12} className="text-gray-500" />
+          <span className="text-[11px] text-gray-500 font-medium">应用日志</span>
         </div>
 
         {/* 日志内容 */}
@@ -234,20 +219,15 @@ export function Logs() {
                       {formatTime(log.timestamp)}
                     </span>
                     <span className={clsx(
-                      'px-1.5 py-0.5 rounded text-[10px] uppercase flex-shrink-0',
+                      'px-1 py-0.5 rounded text-[10px] uppercase flex-shrink-0 font-mono',
                       LEVEL_COLORS[log.level]
                     )}>
                       {log.level}
                     </span>
-                    <span className={clsx(
-                      'flex-shrink-0',
-                      MODULE_COLORS[log.module] || 'text-gray-400'
-                    )}>
+                    <span className={clsx('flex-shrink-0 text-[10px]', MODULE_COLORS[log.module] || 'text-gray-500')}>
                       [{log.module}]
                     </span>
-                    <span className="text-gray-300 break-all">
-                      {log.message}
-                    </span>
+                    <span className="text-gray-300 break-all">{log.message}</span>
                   </div>
                   {log.args.length > 0 && (
                     <div className="mt-1 ml-20 text-gray-500 break-all whitespace-pre-wrap">

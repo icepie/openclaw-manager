@@ -492,7 +492,7 @@ export function Channels() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* 渠道列表 */}
           <div className="md:col-span-1 space-y-2">
-            <h3 className="text-sm font-medium text-gray-400 mb-3 px-1">
+            <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3 px-1">
               消息渠道
             </h3>
             {channels.map((channel) => {
@@ -512,14 +512,14 @@ export function Channels() {
                   className={clsx(
                     'w-full flex items-center gap-3 p-4 rounded-xl border transition-all',
                     isSelected
-                      ? 'bg-dark-600 border-claw-500'
-                      : 'bg-dark-700 border-dark-500 hover:border-dark-400'
+                      ? 'bg-gray-50 dark:bg-dark-600 border-claw-500'
+                      : 'bg-white dark:bg-dark-700 border-gray-200 dark:border-dark-500 hover:border-gray-300 dark:hover:border-dark-400'
                   )}
                 >
                   <div
                     className={clsx(
                       'w-10 h-10 rounded-lg flex items-center justify-center',
-                      isConfigured ? 'bg-dark-500' : 'bg-dark-600'
+                      isConfigured ? 'bg-gray-100 dark:bg-dark-500' : 'bg-gray-50 dark:bg-dark-600'
                     )}
                   >
                     <span className={info.color}>{info.icon}</span>
@@ -528,7 +528,7 @@ export function Channels() {
                     <p
                       className={clsx(
                         'text-sm font-medium',
-                        isSelected ? 'text-white' : 'text-gray-300'
+                        isSelected ? 'text-gray-900 dark:text-white' : 'text-gray-600 dark:text-gray-300'
                       )}
                     >
                       {info.name}
@@ -563,14 +563,14 @@ export function Channels() {
                 key={selectedChannel}
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
-                className="bg-dark-700 rounded-2xl p-6 border border-dark-500"
+                className="bg-white dark:bg-dark-700 rounded-2xl p-6 border border-gray-200 dark:border-dark-500"
               >
                 <div className="flex items-center gap-3 mb-4">
-                  <div className={clsx('w-10 h-10 rounded-lg flex items-center justify-center bg-dark-500', currentInfo.color)}>
+                  <div className={clsx('w-10 h-10 rounded-lg flex items-center justify-center bg-gray-100 dark:bg-dark-500', currentInfo.color)}>
                     {currentInfo.icon}
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold text-white">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                       配置 {currentInfo.name}
                     </h3>
                     {currentInfo.helpText && (
@@ -583,16 +583,16 @@ export function Channels() {
                 {currentChannel.channel_type === 'feishu' && (
                   <div className="mb-4">
                     {feishuPluginLoading ? (
-                      <div className="p-4 bg-dark-600 rounded-xl border border-dark-500 flex items-center gap-3">
-                        <Loader2 size={20} className="animate-spin text-gray-400" />
-                        <span className="text-gray-400">正在检查飞书插件状态...</span>
+                      <div className="p-4 bg-gray-50 dark:bg-dark-600 rounded-xl border border-gray-200 dark:border-dark-500 flex items-center gap-3">
+                        <Loader2 size={20} className="animate-spin text-gray-500 dark:text-gray-400" />
+                        <span className="text-gray-500 dark:text-gray-400">正在检查飞书插件状态...</span>
                       </div>
                     ) : feishuPluginStatus?.installed ? (
                       <div className="p-4 bg-green-500/10 rounded-xl border border-green-500/30 flex items-center gap-3">
                         <Package size={20} className="text-green-400" />
                         <div className="flex-1">
                           <p className="text-green-400 font-medium">飞书插件已安装</p>
-                          <p className="text-xs text-gray-400 mt-0.5">
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                             {feishuPluginStatus.plugin_name || '@m1heng-clawd/feishu'}
                             {feishuPluginStatus.version && ` v${feishuPluginStatus.version}`}
                           </p>
@@ -605,7 +605,7 @@ export function Channels() {
                           <AlertTriangle size={20} className="text-amber-400 mt-0.5" />
                           <div className="flex-1">
                             <p className="text-amber-400 font-medium">需要安装飞书插件</p>
-                            <p className="text-xs text-gray-400 mt-1">
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                               飞书渠道需要先安装 @m1heng-clawd/feishu 插件才能使用。
                             </p>
                             <div className="mt-3 flex flex-wrap gap-2">
@@ -630,7 +630,7 @@ export function Channels() {
                               </button>
                             </div>
                             <p className="text-xs text-gray-500 mt-2">
-                              或手动执行: <code className="px-1.5 py-0.5 bg-dark-600 rounded text-gray-400">openclaw plugins install @m1heng-clawd/feishu</code>
+                              或手动执行: <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-dark-600 rounded text-gray-500 dark:text-gray-400">openclaw plugins install @m1heng-clawd/feishu</code>
                             </p>
                           </div>
                         </div>
@@ -642,7 +642,7 @@ export function Channels() {
                 <div className="space-y-4">
                   {currentInfo.fields.map((field) => (
                     <div key={field.key}>
-                      <label className="block text-sm text-gray-400 mb-2">
+                      <label className="block text-sm text-gray-500 dark:text-gray-400 mb-2">
                         {field.label}
                         {field.required && <span className="text-red-400 ml-1">*</span>}
                         {configForm[field.key] && (
@@ -709,8 +709,8 @@ export function Channels() {
                       <div className="flex items-center gap-3 mb-3">
                         <QrCode size={24} className="text-green-400" />
                         <div>
-                          <p className="text-white font-medium">扫码登录</p>
-                          <p className="text-xs text-gray-400">WhatsApp 需要扫描二维码登录</p>
+                          <p className="text-gray-900 dark:text-white font-medium">扫码登录</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">WhatsApp 需要扫描二维码登录</p>
                         </div>
                       </div>
                       <div className="flex gap-2">
@@ -749,7 +749,7 @@ export function Channels() {
                   )}
 
                   {/* 操作按钮 */}
-                  <div className="pt-4 border-t border-dark-500 flex flex-wrap items-center gap-3">
+                  <div className="pt-4 border-t border-gray-200 dark:border-dark-500 flex flex-wrap items-center gap-3">
                     <button
                       onClick={handleSave}
                       disabled={saving}
@@ -802,7 +802,7 @@ export function Channels() {
                         </button>
                         <button
                           onClick={() => setShowClearConfirm(false)}
-                          className="px-2 py-1 text-xs bg-dark-600 text-gray-300 rounded hover:bg-dark-500 transition-colors"
+                          className="px-2 py-1 text-xs bg-gray-50 dark:bg-dark-600 text-gray-600 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-dark-500 transition-colors"
                         >
                           取消
                         </button>
@@ -832,7 +832,7 @@ export function Channels() {
                         )}>
                           {testResult.success ? '测试成功' : '测试失败'}
                         </p>
-                        <p className="text-sm text-gray-400 mt-1">{testResult.message}</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{testResult.message}</p>
                         {testResult.error && (
                           <p className="text-xs text-red-300 mt-2 whitespace-pre-wrap">
                             {testResult.error}

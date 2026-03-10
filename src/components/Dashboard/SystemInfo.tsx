@@ -2,116 +2,70 @@ import { useEffect, useState } from 'react';
 import { Monitor, Package, Folder, CheckCircle, XCircle } from 'lucide-react';
 import { api, SystemInfo as SystemInfoType, isTauri } from '../../lib/tauri';
 
+const getOSLabel = (os: string) => ({ macos: 'macOS', windows: 'Windows', linux: 'Linux' }[os] ?? os);
+
 export function SystemInfo() {
   const [info, setInfo] = useState<SystemInfoType | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchInfo = async () => {
-      if (!isTauri()) {
-        setLoading(false);
-        return;
-      }
-      try {
-        const result = await api.getSystemInfo();
-        setInfo(result);
-      } catch {
-        // 静默处理
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchInfo();
+    if (!isTauri()) { setLoading(false); return; }
+    api.getSystemInfo().then(setInfo).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
-  const getOSLabel = (os: string) => {
-    switch (os) {
-      case 'macos':
-        return 'macOS';
-      case 'windows':
-        return 'Windows';
-      case 'linux':
-        return 'Linux';
-      default:
-        return os;
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="bg-dark-700 rounded-2xl p-6 border border-dark-500">
-        <h3 className="text-lg font-semibold text-white mb-4">系统信息</h3>
-        <div className="animate-pulse space-y-3">
-          <div className="h-4 bg-dark-500 rounded w-1/2"></div>
-          <div className="h-4 bg-dark-500 rounded w-2/3"></div>
-          <div className="h-4 bg-dark-500 rounded w-1/3"></div>
-        </div>
-      </div>
-    );
-  }
+  const rows = info ? [
+    {
+      icon: Monitor,
+      iconClass: 'text-sky-500',
+      label: '操作系统',
+      value: `${getOSLabel(info.os)} ${info.os_version}`,
+      sub: info.arch,
+    },
+    {
+      icon: info.openclaw_installed ? CheckCircle : XCircle,
+      iconClass: info.openclaw_installed ? 'text-emerald-500' : 'text-red-500',
+      label: 'OpenClaw',
+      value: info.openclaw_installed ? (info.openclaw_version || '已安装') : '未安装',
+    },
+    {
+      icon: Package,
+      iconClass: 'text-emerald-500',
+      label: 'Node.js',
+      value: info.node_version || '--',
+    },
+    {
+      icon: Folder,
+      iconClass: 'text-amber-500',
+      label: '配置目录',
+      value: info.config_dir || '--',
+      mono: true,
+    },
+  ] : [];
 
   return (
-    <div className="bg-dark-700 rounded-2xl p-6 border border-dark-500">
-      <h3 className="text-lg font-semibold text-white mb-4">系统信息</h3>
+    <div className="card p-5">
+      <span className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-4">系统信息</span>
 
-      <div className="space-y-4">
-        {/* 操作系统 */}
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-dark-500 flex items-center justify-center">
-            <Monitor size={16} className="text-gray-400" />
-          </div>
-          <div className="flex-1">
-            <p className="text-xs text-gray-500">操作系统</p>
-            <p className="text-sm text-white">
-              {info ? `${getOSLabel(info.os)} ${info.os_version}` : '--'}{' '}
-              <span className="text-gray-500">({info?.arch})</span>
-            </p>
-          </div>
+      {loading ? (
+        <div className="space-y-3 animate-pulse">
+          {[60, 80, 50, 90].map((w) => (
+            <div key={w} className={`h-3 rounded bg-gray-100 dark:bg-white/[0.06] w-[${w}%]`} />
+          ))}
         </div>
-
-        {/* OpenClaw */}
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-dark-500 flex items-center justify-center">
-            {info?.openclaw_installed ? (
-              <CheckCircle size={16} className="text-green-400" />
-            ) : (
-              <XCircle size={16} className="text-red-400" />
-            )}
-          </div>
-          <div className="flex-1">
-            <p className="text-xs text-gray-500">OpenClaw</p>
-            <p className="text-sm text-white">
-              {info?.openclaw_installed
-                ? info.openclaw_version || '已安装'
-                : '未安装'}
-            </p>
-          </div>
+      ) : (
+        <div className="space-y-3">
+          {rows.map(({ icon: Icon, iconClass, label, value, sub, mono }) => (
+            <div key={label} className="flex items-center gap-3">
+              <Icon size={14} className={iconClass + ' flex-shrink-0'} />
+              <span className="text-xs text-gray-400 dark:text-gray-500 w-16 flex-shrink-0">{label}</span>
+              <span className={`text-xs text-gray-700 dark:text-gray-300 truncate ${mono ? 'font-mono' : ''}`}>
+                {value}
+                {sub && <span className="text-gray-400 dark:text-gray-600 ml-1">({sub})</span>}
+              </span>
+            </div>
+          ))}
         </div>
-
-        {/* Node.js */}
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-dark-500 flex items-center justify-center">
-            <Package size={16} className="text-green-500" />
-          </div>
-          <div className="flex-1">
-            <p className="text-xs text-gray-500">Node.js</p>
-            <p className="text-sm text-white">{info?.node_version || '--'}</p>
-          </div>
-        </div>
-
-        {/* 配置目录 */}
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-dark-500 flex items-center justify-center">
-            <Folder size={16} className="text-amber-400" />
-          </div>
-          <div className="flex-1">
-            <p className="text-xs text-gray-500">配置目录</p>
-            <p className="text-sm text-white font-mono text-xs truncate">
-              {info?.config_dir || '--'}
-            </p>
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

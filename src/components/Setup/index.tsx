@@ -430,7 +430,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
 
   // 全屏模式（保留用于特殊情况）
   return (
-    <div className="min-h-screen bg-dark-900 flex items-center justify-center p-8">
+    <div className="min-h-screen bg-gray-50 dark:bg-dark-900 flex items-center justify-center p-8">
       {/* 背景装饰 */}
       <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
       <div className="absolute inset-0 overflow-hidden pointer-events-none">

@@ -264,18 +264,18 @@ function ProviderDialog({ officialProviders, onClose, onSave, editingProvider }:
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
-        className="bg-dark-800 rounded-2xl border border-dark-600 w-full max-w-2xl max-h-[85vh] overflow-hidden"
+        className="bg-white dark:bg-dark-800 rounded-2xl border border-gray-200 dark:border-dark-600 w-full max-w-2xl max-h-[85vh] overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* 头部 */}
-        <div className="px-6 py-4 border-b border-dark-600 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+        <div className="px-6 py-4 border-b border-gray-200 dark:border-dark-600 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
             {isEditing ? <Settings2 size={20} className="text-claw-400" /> : <Plus size={20} className="text-claw-400" />}
             {isEditing 
               ? `编辑 Provider: ${editingProvider?.name}` 
               : (step === 'select' ? '添加 AI Provider' : `配置 ${selectedOfficial?.name || '自定义 Provider'}`)}
           </h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-white">
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-900 dark:hover:text-white">
             ✕
           </button>
         </div>
@@ -293,17 +293,17 @@ function ProviderDialog({ officialProviders, onClose, onSave, editingProvider }:
               >
                 {/* 官方 Provider */}
                 <div className="space-y-3">
-                  <h3 className="text-sm font-medium text-gray-400">官方 Provider</h3>
+                  <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">官方 Provider</h3>
                   <div className="grid grid-cols-2 gap-3">
                     {officialProviders.map(provider => (
                 <button
                   key={provider.id}
                         onClick={() => handleSelectOfficial(provider)}
-                        className="flex items-center gap-3 p-4 rounded-xl bg-dark-700 border border-dark-500 hover:border-claw-500/50 hover:bg-dark-600 transition-all text-left group"
+                        className="flex items-center gap-3 p-4 rounded-xl bg-white dark:bg-dark-700 border border-gray-200 dark:border-dark-500 hover:border-claw-500/50 hover:bg-gray-100 dark:hover:bg-dark-600 transition-all text-left group"
                 >
                   <span className="text-2xl">{provider.icon}</span>
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-white truncate">{provider.name}</p>
+                          <p className="font-medium text-gray-900 dark:text-white truncate">{provider.name}</p>
                           <p className="text-xs text-gray-500 truncate">
                             {provider.suggested_models.length} 个模型
                           </p>
@@ -315,10 +315,10 @@ function ProviderDialog({ officialProviders, onClose, onSave, editingProvider }:
         </div>
 
                 {/* 自定义 Provider */}
-                <div className="pt-4 border-t border-dark-600">
+                <div className="pt-4 border-t border-gray-200 dark:border-dark-600">
                   <button
                     onClick={handleSelectCustom}
-                    className="w-full flex items-center justify-center gap-2 p-4 rounded-xl border-2 border-dashed border-dark-500 hover:border-claw-500/50 text-gray-400 hover:text-white transition-all"
+                    className="w-full flex items-center justify-center gap-2 p-4 rounded-xl border-2 border-dashed border-gray-200 dark:border-dark-500 hover:border-claw-500/50 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-all"
                   >
                     <Settings2 size={18} />
                     <span>自定义 Provider (兼容 OpenAI/Anthropic API)</span>
@@ -335,7 +335,7 @@ function ProviderDialog({ officialProviders, onClose, onSave, editingProvider }:
               >
                 {/* Provider 名称 */}
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">
+                  <label className="block text-sm text-gray-500 dark:text-gray-400 mb-2">
                     Provider 名称
                     <span className="text-gray-600 text-xs ml-2">(用于配置标识，如 anthropic-custom)</span>
                   </label>
@@ -373,7 +373,7 @@ function ProviderDialog({ officialProviders, onClose, onSave, editingProvider }:
 
                 {/* API 地址 */}
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">API 地址</label>
+                  <label className="block text-sm text-gray-500 dark:text-gray-400 mb-2">API 地址</label>
                   <input
                     type="text"
                     value={baseUrl}
@@ -385,7 +385,7 @@ function ProviderDialog({ officialProviders, onClose, onSave, editingProvider }:
 
               {/* API Key */}
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">
+                  <label className="block text-sm text-gray-500 dark:text-gray-400 mb-2">
                     API Key
                     {!selectedOfficial?.requires_api_key && (
                       <span className="text-gray-600 text-xs ml-2">(可选)</span>
@@ -395,7 +395,7 @@ function ProviderDialog({ officialProviders, onClose, onSave, editingProvider }:
                   {isEditing && editingProvider?.has_api_key && (
                     <div className="mb-2 flex items-center gap-2 text-sm">
                       <span className="text-gray-500">当前:</span>
-                      <code className="px-2 py-0.5 bg-dark-600 rounded text-gray-400">
+                      <code className="px-2 py-0.5 bg-gray-100 dark:bg-dark-600 rounded text-gray-500 dark:text-gray-400">
                         {editingProvider.api_key_masked}
                       </code>
                       <span className="text-green-400 text-xs">✓ 已配置</span>
@@ -414,7 +414,7 @@ function ProviderDialog({ officialProviders, onClose, onSave, editingProvider }:
                     <button
                       type="button"
                       onClick={() => setShowApiKey(!showApiKey)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-900 dark:hover:text-white"
                     >
                       {showApiKey ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
@@ -428,7 +428,7 @@ function ProviderDialog({ officialProviders, onClose, onSave, editingProvider }:
 
                 {/* API 类型 */}
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">API 类型</label>
+                  <label className="block text-sm text-gray-500 dark:text-gray-400 mb-2">API 类型</label>
                   <select
                     value={apiType}
                     onChange={e => setApiType(e.target.value)}
@@ -441,7 +441,7 @@ function ProviderDialog({ officialProviders, onClose, onSave, editingProvider }:
 
                 {/* 模型选择 */}
               <div>
-                <label className="block text-sm text-gray-400 mb-2">
+                <label className="block text-sm text-gray-500 dark:text-gray-400 mb-2">
                     选择模型
                     <span className="text-gray-600 text-xs ml-2">
                       (已选 {selectedModels.length} 个)
@@ -459,13 +459,13 @@ function ProviderDialog({ officialProviders, onClose, onSave, editingProvider }:
                             'w-full flex items-center justify-between p-3 rounded-lg border transition-all text-left',
                             selectedModels.includes(model.id)
                               ? 'bg-claw-500/20 border-claw-500'
-                              : 'bg-dark-700 border-dark-500 hover:border-dark-400'
+                              : 'bg-white dark:bg-dark-700 border-gray-200 dark:border-dark-500 hover:border-gray-300 dark:hover:border-dark-400'
                           )}
                         >
                           <div>
                             <p className={clsx(
                               'text-sm font-medium',
-                              selectedModels.includes(model.id) ? 'text-white' : 'text-gray-300'
+                              selectedModels.includes(model.id) ? 'text-gray-900 dark:text-white' : 'text-gray-600 dark:text-gray-300'
                             )}>
                               {model.name}
                               {model.recommended && (
@@ -511,7 +511,7 @@ function ProviderDialog({ officialProviders, onClose, onSave, editingProvider }:
                         .map(modelId => (
                           <span
                             key={modelId}
-                            className="inline-flex items-center gap-1 px-2 py-1 bg-dark-600 rounded-lg text-sm text-gray-300"
+                            className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-dark-600 rounded-lg text-sm text-gray-600 dark:text-gray-300"
                           >
                             {modelId}
                             <button
@@ -582,7 +582,7 @@ function ProviderDialog({ officialProviders, onClose, onSave, editingProvider }:
                       </button>
                       <button
                         onClick={() => setShowCustomUrlWarning(false)}
-                        className="text-sm text-gray-400 hover:text-white px-3"
+                        className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white px-3"
                       >
                         取消
                       </button>
@@ -595,7 +595,7 @@ function ProviderDialog({ officialProviders, onClose, onSave, editingProvider }:
               </div>
 
         {/* 底部按钮 */}
-        <div className="px-6 py-4 border-t border-dark-600 flex justify-between">
+        <div className="px-6 py-4 border-t border-gray-200 dark:border-dark-600 flex justify-between">
           {step === 'configure' && !isEditing && (
             <button
               onClick={() => setStep('select')}
@@ -679,17 +679,17 @@ function ProviderCard({ provider, officialProviders, onSetPrimary, onRefresh, on
       layout
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-dark-700 rounded-xl border border-dark-500 overflow-hidden"
+      className="bg-white dark:bg-dark-700 rounded-xl border border-gray-200 dark:border-dark-500 overflow-hidden"
     >
       {/* 头部 */}
       <div
-        className="flex items-center gap-3 p-4 cursor-pointer hover:bg-dark-600/50 transition-colors"
+        className="flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-dark-600/50 transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
         <span className="text-xl">{officialInfo?.icon || '🔌'}</span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="font-medium text-white">{provider.name}</h3>
+            <h3 className="font-medium text-gray-900 dark:text-white">{provider.name}</h3>
             {provider.has_api_key && (
               <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 text-xs rounded">
                 已配置
@@ -718,14 +718,14 @@ function ProviderCard({ provider, officialProviders, onSetPrimary, onRefresh, on
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="border-t border-dark-600"
+            className="border-t border-gray-200 dark:border-dark-600"
           >
             <div className="p-4 space-y-3">
               {/* API Key 信息 */}
               {provider.api_key_masked && (
                 <div className="flex items-center gap-2 text-sm">
                   <span className="text-gray-500">API Key:</span>
-                  <code className="px-2 py-0.5 bg-dark-600 rounded text-gray-400">
+                  <code className="px-2 py-0.5 bg-gray-100 dark:bg-dark-600 rounded text-gray-500 dark:text-gray-400">
                     {provider.api_key_masked}
                   </code>
                 </div>
@@ -740,7 +740,7 @@ function ProviderCard({ provider, officialProviders, onSetPrimary, onRefresh, on
                       'flex items-center justify-between p-3 rounded-lg border transition-all',
                       model.is_primary
                         ? 'bg-claw-500/10 border-claw-500/50'
-                        : 'bg-dark-600 border-dark-500'
+                        : 'bg-gray-50 dark:bg-dark-600 border-gray-200 dark:border-dark-500'
                     )}
                   >
                     <div className="flex items-center gap-3">
@@ -748,7 +748,7 @@ function ProviderCard({ provider, officialProviders, onSetPrimary, onRefresh, on
                       <div>
                         <p className={clsx(
                             'text-sm font-medium',
-                          model.is_primary ? 'text-white' : 'text-gray-300'
+                          model.is_primary ? 'text-gray-900 dark:text-white' : 'text-gray-600 dark:text-gray-300'
                         )}>
                           {model.name}
                           {model.is_primary && (
@@ -948,10 +948,10 @@ export function AIConfig() {
         )}
 
         {/* 概览卡片 */}
-        <div className="bg-gradient-to-br from-dark-700 to-dark-800 rounded-2xl p-6 border border-dark-500">
+        <div className="bg-gradient-to-br from-white dark:from-dark-700 to-gray-50 dark:to-dark-800 rounded-2xl p-6 border border-gray-200 dark:border-dark-500">
           <div className="flex items-start justify-between mb-4">
             <div>
-              <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                 <Sparkles size={22} className="text-claw-400" />
                 AI 模型配置
               </h2>
@@ -969,14 +969,14 @@ export function AIConfig() {
           </div>
 
           {/* 主模型显示 */}
-          <div className="bg-dark-600/50 rounded-xl p-4 flex items-center gap-4">
+          <div className="bg-gray-50 dark:bg-dark-600/50 rounded-xl p-4 flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-claw-500/20 flex items-center justify-center">
               <Star size={24} className="text-claw-400" />
             </div>
             <div className="flex-1">
-              <p className="text-sm text-gray-400">当前主模型</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">当前主模型</p>
               {aiConfig?.primary_model ? (
-                <p className="text-lg font-medium text-white">{aiConfig.primary_model}</p>
+                <p className="text-lg font-medium text-gray-900 dark:text-white">{aiConfig.primary_model}</p>
               ) : (
                 <p className="text-lg text-gray-500">未设置</p>
               )}
@@ -1024,21 +1024,21 @@ export function AIConfig() {
                     {testResult.success ? '连接成功' : '连接失败'}
                   </p>
                   {testResult.latency_ms && (
-                    <p className="text-xs text-gray-400">响应时间: {testResult.latency_ms}ms</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">响应时间: {testResult.latency_ms}ms</p>
                   )}
                 </div>
                 <button
                   onClick={() => setTestResult(null)}
-                  className="text-gray-500 hover:text-white text-sm"
+                  className="text-gray-500 hover:text-gray-900 dark:hover:text-white text-sm"
                 >
                   关闭
                 </button>
               </div>
               
               {testResult.response && (
-                <div className="mt-2 p-3 bg-dark-700 rounded-lg">
-                  <p className="text-xs text-gray-400 mb-1">AI 响应:</p>
-                  <p className="text-sm text-white whitespace-pre-wrap">{testResult.response}</p>
+                <div className="mt-2 p-3 bg-white dark:bg-dark-700 rounded-lg">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">AI 响应:</p>
+                  <p className="text-sm text-gray-900 dark:text-white whitespace-pre-wrap">{testResult.response}</p>
                 </div>
               )}
               
@@ -1054,17 +1054,17 @@ export function AIConfig() {
 
         {/* 已配置的 Provider 列表 */}
         <div className="space-y-4">
-          <h3 className="text-lg font-medium text-white flex items-center gap-2">
+          <h3 className="text-lg font-medium text-gray-900 dark:text-white flex items-center gap-2">
             <Server size={18} className="text-gray-500" />
             已配置的 Provider
           </h3>
 
           {aiConfig?.configured_providers.length === 0 ? (
-            <div className="bg-dark-700 rounded-xl border border-dark-500 p-8 text-center">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-dark-600 flex items-center justify-center">
+            <div className="bg-white dark:bg-dark-700 rounded-xl border border-gray-200 dark:border-dark-500 p-8 text-center">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-50 dark:bg-dark-600 flex items-center justify-center">
                 <Plus size={24} className="text-gray-500" />
               </div>
-              <p className="text-gray-400 mb-4">还没有配置任何 AI Provider</p>
+              <p className="text-gray-500 dark:text-gray-400 mb-4">还没有配置任何 AI Provider</p>
               <button
                 onClick={() => setShowAddDialog(true)}
                 className="btn-primary"
@@ -1091,14 +1091,14 @@ export function AIConfig() {
         {/* 可用模型列表 */}
         {aiConfig && aiConfig.available_models.length > 0 && (
           <div className="space-y-4">
-            <h3 className="text-lg font-medium text-white flex items-center gap-2">
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white flex items-center gap-2">
               <Cpu size={18} className="text-gray-500" />
               可用模型列表
               <span className="text-sm font-normal text-gray-500">
                 ({aiConfig.available_models.length} 个)
               </span>
             </h3>
-            <div className="bg-dark-700 rounded-xl border border-dark-500 p-4">
+            <div className="bg-white dark:bg-dark-700 rounded-xl border border-gray-200 dark:border-dark-500 p-4">
               <div className="flex flex-wrap gap-2">
                 {aiConfig.available_models.map(modelId => (
                   <span
@@ -1107,7 +1107,7 @@ export function AIConfig() {
                       'inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm',
                       modelId === aiConfig.primary_model
                         ? 'bg-claw-500/20 text-claw-300 border border-claw-500/30'
-                        : 'bg-dark-600 text-gray-300'
+                        : 'bg-gray-50 dark:bg-dark-600 text-gray-600 dark:text-gray-300'
                     )}
                   >
                     {modelId === aiConfig.primary_model && <Star size={12} />}
@@ -1120,8 +1120,8 @@ export function AIConfig() {
         )}
 
         {/* 配置说明 */}
-        <div className="bg-dark-700/50 rounded-xl p-4 border border-dark-500">
-          <h4 className="text-sm font-medium text-gray-400 mb-2">配置说明</h4>
+        <div className="bg-gray-50 dark:bg-dark-700/50 rounded-xl p-4 border border-gray-200 dark:border-dark-500">
+          <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">配置说明</h4>
           <ul className="text-sm text-gray-500 space-y-1">
             <li>• Provider 配置保存在 <code className="text-claw-400">~/.openclaw/openclaw.json</code></li>
             <li>• 支持官方 Provider（Anthropic、OpenAI、Kimi 等）和自定义 OpenAI/Anthropic 兼容 API</li>
