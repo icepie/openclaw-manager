@@ -71,14 +71,19 @@ jobs:
           cache-on-failure: true
 
       # ── Node.js ──────────────────────────────────────────
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          cache: pnpm
 
       - name: Install frontend dependencies
-        run: npm ci
+        run: pnpm install
 
       # ── 构建 ─────────────────────────────────────────────
       - name: Build Tauri app (macOS Universal)
