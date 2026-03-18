@@ -83,7 +83,7 @@ pub async fn check_environment() -> Result<EnvironmentStatus, String> {
     let config_dir_exists = std::path::Path::new(&config_dir).exists();
     info!("[环境检查] 配置目录: {}, exists={}", config_dir, config_dir_exists);
     
-    let ready = git_installed && node_installed && node_version_ok && openclaw_installed;
+    let ready = openclaw_installed;
     info!("[环境检查] 环境就绪状态: ready={}", ready);
 
     Ok(EnvironmentStatus {
@@ -766,6 +766,26 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// 把 bundle 里的 node 二进制复制到 prefix/node/ 目录，供 openclaw 运行时使用
+fn copy_bundled_node_to_prefix(bundle_dir: &PathBuf, prefix: &PathBuf) -> Result<(), String> {
+    let Some(node_bin) = resolve_bundled_node_binary(bundle_dir) else {
+        return Ok(()); // 没有 bundled node，跳过
+    };
+    let node_dir = prefix.join("node");
+    fs::create_dir_all(&node_dir).map_err(|e| e.to_string())?;
+    let node_name = if cfg!(target_os = "windows") { "node.exe" } else { "node" };
+    let dest = node_dir.join(node_name);
+    fs::copy(&node_bin, &dest).map_err(|e| format!("复制 node 失败: {}", e))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&dest, fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("设置 node 权限失败: {}", e))?;
+    }
+    info!("[离线安装] bundled node 已复制到 {}", dest.display());
+    Ok(())
+}
+
 fn install_openclaw_from_bundle_dir(bundle_dir: &PathBuf, install_dir: Option<&Path>) -> Result<bool, String> {
     if !bundle_payload_usable(bundle_dir) {
         info!("[离线安装] bundle payload 不完整，跳过离线安装");
@@ -786,6 +806,8 @@ fn install_openclaw_from_bundle_dir(bundle_dir: &PathBuf, install_dir: Option<&P
     if prepared_prefix.exists() {
         info!("[离线安装] 从 bundled prefix snapshot 安装...");
         copy_dir_recursive(&prepared_prefix, &prefix)?;
+        // 同时把 bundled node 复制到 prefix/node/，供 openclaw 运行时使用
+        copy_bundled_node_to_prefix(bundle_dir, &prefix)?;
         if prefix_has_openclaw_binary(&prefix) {
             info!("[离线安装] ✓ bundled prefix 安装完成");
             return Ok(true);
@@ -821,6 +843,7 @@ fn install_openclaw_from_bundle_dir(bundle_dir: &PathBuf, install_dir: Option<&P
         .map_err(|e| format!("运行 bundled npm 失败: {}", e))?;
 
     if output.status.success() {
+        copy_bundled_node_to_prefix(bundle_dir, &prefix)?;
         if prefix_has_openclaw_binary(&prefix) {
             info!("[离线安装] ✓ npm 离线安装完成");
             return Ok(true);

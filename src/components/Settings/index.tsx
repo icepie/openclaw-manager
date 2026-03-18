@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
   User,
@@ -10,12 +10,68 @@ import {
   Trash2,
   AlertTriangle,
   X,
+  ChevronDown,
 } from 'lucide-react';
 
 interface InstallResult {
   success: boolean;
   message: string;
   error?: string;
+}
+
+const TIMEZONES = [
+  { value: 'Asia/Shanghai', label: 'Asia/Shanghai (北京时间)' },
+  { value: 'Asia/Hong_Kong', label: 'Asia/Hong_Kong (香港时间)' },
+  { value: 'Asia/Tokyo', label: 'Asia/Tokyo (东京时间)' },
+  { value: 'America/New_York', label: 'America/New_York (纽约时间)' },
+  { value: 'America/Los_Angeles', label: 'America/Los_Angeles (洛杉矶时间)' },
+  { value: 'Europe/London', label: 'Europe/London (伦敦时间)' },
+  { value: 'UTC', label: 'UTC' },
+];
+
+function CustomSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = TIMEZONES.find((t) => t.value === value);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="input-base flex items-center justify-between gap-2 cursor-pointer text-left"
+      >
+        <span>{selected?.label ?? value}</span>
+        <ChevronDown className={`w-4 h-4 flex-shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute z-50 mt-1 w-full rounded-lg border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-[#1a1a1f] shadow-lg overflow-hidden">
+          {TIMEZONES.map((tz) => (
+            <button
+              key={tz.value}
+              type="button"
+              onClick={() => { onChange(tz.value); setOpen(false); }}
+              className={`w-full text-left px-3 py-2 text-sm transition-colors
+                ${value === tz.value
+                  ? 'bg-claw-500/10 text-claw-500'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/[0.06]'
+                }`}
+            >
+              {tz.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 interface SettingsProps {
@@ -130,25 +186,10 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
 
             <div>
               <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">时区</label>
-              <select
+              <CustomSelect
                 value={identity.timezone}
-                onChange={(e) =>
-                  setIdentity({ ...identity, timezone: e.target.value })
-                }
-                className="input-base"
-              >
-                <option value="Asia/Shanghai">Asia/Shanghai (北京时间)</option>
-                <option value="Asia/Hong_Kong">Asia/Hong_Kong (香港时间)</option>
-                <option value="Asia/Tokyo">Asia/Tokyo (东京时间)</option>
-                <option value="America/New_York">
-                  America/New_York (纽约时间)
-                </option>
-                <option value="America/Los_Angeles">
-                  America/Los_Angeles (洛杉矶时间)
-                </option>
-                <option value="Europe/London">Europe/London (伦敦时间)</option>
-                <option value="UTC">UTC</option>
-              </select>
+                onChange={(v) => setIdentity({ ...identity, timezone: v })}
+              />
             </div>
           </div>
         </div>

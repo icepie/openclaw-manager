@@ -16,52 +16,26 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 /// GUI 应用启动时可能没有继承用户 shell 的 PATH，需要手动添加常见路径
 pub fn get_extended_path() -> String {
     let mut paths = Vec::new();
-    
-    // 添加常见的可执行文件路径
-    paths.push("/opt/homebrew/bin".to_string());  // Homebrew on Apple Silicon
-    paths.push("/usr/local/bin".to_string());      // Homebrew on Intel / 常规安装
-    paths.push("/usr/bin".to_string());
-    paths.push("/bin".to_string());
-    
+
     if let Some(home) = dirs::home_dir() {
         let home_str = home.display().to_string();
-        
-        // nvm 路径（尝试获取当前版本）
-        let nvm_default = format!("{}/.nvm/alias/default", home_str);
-        if let Ok(version) = std::fs::read_to_string(&nvm_default) {
-            let version = version.trim();
-            if !version.is_empty() {
-                paths.insert(0, format!("{}/.nvm/versions/node/v{}/bin", home_str, version));
-            }
-        }
-        // 也添加常见 nvm 版本路径
-        for version in ["v22.22.0", "v22.12.0", "v22.11.0", "v22.0.0", "v23.0.0"] {
-            let nvm_bin = format!("{}/.nvm/versions/node/{}/bin", home_str, version);
-            if std::path::Path::new(&nvm_bin).exists() {
-                paths.insert(0, nvm_bin);
-                break; // 只添加第一个存在的
-            }
-        }
-        
-        // fnm
-        paths.push(format!("{}/.fnm/aliases/default/bin", home_str));
-        
-        // volta
-        paths.push(format!("{}/.volta/bin", home_str));
-        
-        // asdf
-        paths.push(format!("{}/.asdf/shims", home_str));
-        
-        // mise
-        paths.push(format!("{}/.local/share/mise/shims", home_str));
+        // 离线安装的 bundled node 和 openclaw bin（最高优先级）
+        paths.push(format!("{}/.openclaw/node", home_str));
+        paths.push(format!("{}/.openclaw/bin", home_str));
     }
-    
-    // 获取当前 PATH 并合并
+
+    // 系统常见路径兜底
+    paths.push("/opt/homebrew/bin".to_string());
+    paths.push("/usr/local/bin".to_string());
+    paths.push("/usr/bin".to_string());
+    paths.push("/bin".to_string());
+
+    // 合并当前 PATH
     let current_path = std::env::var("PATH").unwrap_or_default();
     if !current_path.is_empty() {
         paths.push(current_path);
     }
-    
+
     paths.join(":")
 }
 
@@ -279,73 +253,32 @@ pub fn get_openclaw_path() -> Option<String> {
 /// 获取 Unix 系统上可能的 openclaw 安装路径
 fn get_unix_openclaw_paths() -> Vec<String> {
     let mut paths = Vec::new();
-    
-    // npm 全局安装路径
-    paths.push("/usr/local/bin/openclaw".to_string());
-    paths.push("/opt/homebrew/bin/openclaw".to_string()); // Homebrew on Apple Silicon
-    paths.push("/usr/bin/openclaw".to_string());
-    
+
     if let Some(home) = dirs::home_dir() {
         let home_str = home.display().to_string();
-        
-        // npm 全局安装到用户目录
-        paths.push(format!("{}/.npm-global/bin/openclaw", home_str));
-        
-        // nvm 安装的 npm 全局包（需要找到正确的 node 版本目录）
-        // 先检查常见版本
-        for version in ["v22.0.0", "v22.1.0", "v22.2.0", "v22.11.0", "v22.12.0", "v23.0.0"] {
-            paths.push(format!("{}/.nvm/versions/node/{}/bin/openclaw", home_str, version));
-        }
-        
-        // 检查 nvm current（尝试读取 .nvmrc 或 default）
-        let nvm_default = format!("{}/.nvm/alias/default", home_str);
-        if let Ok(version) = std::fs::read_to_string(&nvm_default) {
-            let version = version.trim();
-            if !version.is_empty() {
-                paths.insert(0, format!("{}/.nvm/versions/node/v{}/bin/openclaw", home_str, version));
-            }
-        }
-        
-        // fnm
-        paths.push(format!("{}/.fnm/aliases/default/bin/openclaw", home_str));
-        
-        // volta
-        paths.push(format!("{}/.volta/bin/openclaw", home_str));
-        
-        // pnpm 全局安装
-        paths.push(format!("{}/.pnpm/bin/openclaw", home_str));
-        paths.push(format!("{}/Library/pnpm/openclaw", home_str)); // macOS pnpm 默认路径
-        
-        // asdf
-        paths.push(format!("{}/.asdf/shims/openclaw", home_str));
-        
-        // mise (formerly rtx)
-        paths.push(format!("{}/.local/share/mise/shims/openclaw", home_str));
-        
-        // yarn 全局安装
-        paths.push(format!("{}/.yarn/bin/openclaw", home_str));
-        paths.push(format!("{}/.config/yarn/global/node_modules/.bin/openclaw", home_str));
+        // 离线安装路径（最高优先级）
+        paths.push(format!("{}/.openclaw/bin/openclaw", home_str));
     }
-    
+
+    // 系统 PATH 兜底
+    paths.push("/usr/local/bin/openclaw".to_string());
+    paths.push("/opt/homebrew/bin/openclaw".to_string());
+    paths.push("/usr/bin/openclaw".to_string());
+
     paths
 }
 
-/// 获取 Windows 上可能的 openclaw 安装路径
 fn get_windows_openclaw_paths() -> Vec<String> {
     let mut paths = Vec::new();
-    
-    // 1. nvm4w 安装路径
-    paths.push("C:\\nvm4w\\nodejs\\openclaw.cmd".to_string());
-    
-    // 2. 用户目录下的 npm 全局路径
+
     if let Some(home) = dirs::home_dir() {
-        let npm_path = format!("{}\\AppData\\Roaming\\npm\\openclaw.cmd", home.display());
-        paths.push(npm_path);
+        // 离线安装路径（最高优先级）
+        paths.push(format!("{}/.openclaw/bin/openclaw.cmd", home.display()));
+        paths.push(format!("{}/.openclaw/bin/openclaw.exe", home.display()));
+        // npm 全局安装
+        paths.push(format!("{}\\AppData\\Roaming\\npm\\openclaw.cmd", home.display()));
     }
-    
-    // 3. Program Files 下的 nodejs
-    paths.push("C:\\Program Files\\nodejs\\openclaw.cmd".to_string());
-    
+
     paths
 }
 
