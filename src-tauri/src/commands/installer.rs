@@ -990,44 +990,42 @@ async fn download_file(
 }
 
 fn extract_tar_gz(archive: &PathBuf, dest: &PathBuf) -> Result<(), String> {
+    use flate2::read::GzDecoder;
+    use tar::Archive;
     fs::create_dir_all(dest).map_err(|e| e.to_string())?;
-    let o = Command::new("tar")
-        .arg("-xzf").arg(archive)
-        .arg("-C").arg(dest)
-        .output()
-        .map_err(|e| format!("tar 解压失败: {}", e))?;
-    if o.status.success() {
-        return Ok(());
-    }
-    // Windows: tar 可能不支持 -z，尝试不带 -z
-    let o2 = Command::new("tar")
-        .arg("-xf").arg(archive)
-        .arg("-C").arg(dest)
-        .output()
-        .map_err(|e| format!("tar 解压失败: {}", e))?;
-    if o2.status.success() {
-        return Ok(());
-    }
-    Err(format!("tar 解压失败: {}", String::from_utf8_lossy(&o2.stderr).trim()))
+    let file = fs::File::open(archive).map_err(|e| format!("打开压缩包失败: {}", e))?;
+    let gz = GzDecoder::new(file);
+    let mut ar = Archive::new(gz);
+    ar.set_preserve_permissions(true);
+    ar.unpack(dest).map_err(|e| format!("tar.gz 解压失败: {}", e))
 }
 
 fn extract_zip(archive: &PathBuf, dest: &PathBuf) -> Result<(), String> {
+    use zip::ZipArchive;
     fs::create_dir_all(dest).map_err(|e| e.to_string())?;
-    // Windows 内置 Expand-Archive (PowerShell)
-    let o = Command::new("powershell")
-        .args([
-            "-NoProfile", "-NonInteractive", "-Command",
-            &format!(
-                "Expand-Archive -Force -Path '{}' -DestinationPath '{}'",
-                archive.display(), dest.display()
-            ),
-        ])
-        .output()
-        .map_err(|e| format!("zip 解压失败: {}", e))?;
-    if o.status.success() {
-        return Ok(());
+    let file = fs::File::open(archive).map_err(|e| format!("打开压缩包失败: {}", e))?;
+    let mut zip = ZipArchive::new(file).map_err(|e| format!("读取 zip 失败: {}", e))?;
+    for i in 0..zip.len() {
+        let mut entry = zip.by_index(i).map_err(|e| format!("读取 zip 条目失败: {}", e))?;
+        let out_path = dest.join(entry.mangled_name());
+        if entry.is_dir() {
+            fs::create_dir_all(&out_path).map_err(|e| e.to_string())?;
+        } else {
+            if let Some(parent) = out_path.parent() {
+                fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            let mut out = fs::File::create(&out_path).map_err(|e| format!("创建文件失败: {}", e))?;
+            std::io::copy(&mut entry, &mut out).map_err(|e| format!("写入文件失败: {}", e))?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if let Some(mode) = entry.unix_mode() {
+                    let _ = fs::set_permissions(&out_path, fs::Permissions::from_mode(mode));
+                }
+            }
+        }
     }
-    Err(format!("zip 解压失败: {}", String::from_utf8_lossy(&o.stderr).trim()))
+    Ok(())
 }
 
 async fn download_and_install_bundle(app: &tauri::AppHandle, url: &str, install_dir: Option<&Path>) -> Result<(), String> {

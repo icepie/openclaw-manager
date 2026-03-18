@@ -25,6 +25,9 @@ thiserror = "1"
 log = "0.4"
 env_logger = "0.11"
 tauri-plugin-dialog = "2.6.0"
+flate2 = "1"
+tar = "0.4"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.26"
