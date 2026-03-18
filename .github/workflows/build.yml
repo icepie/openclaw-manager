@@ -26,7 +26,7 @@ jobs:
             os: macos
             arch: arm64
             label: macOS-arm64
-          - platform: macos-13
+          - platform: macos-latest
             os: macos
             arch: x64
             label: macOS-x64
@@ -59,7 +59,7 @@ jobs:
       - name: Prepare openclaw bundle
         env:
           OPENCLAW_BUNDLE_NODE_ARCH: ${{ matrix.arch }}
-          OPENCLAW_BUNDLE_SKIP_VERIFY: ${{ (matrix.arch == 'arm64' && runner.arch == 'X64') && '1' || '0' }}
+          OPENCLAW_BUNDLE_SKIP_VERIFY: ${{ (matrix.os == 'macos' && matrix.arch == 'x64') && '1' || '0' }}
         run: node scripts/prepare-openclaw-bundle.mjs
 
       - name: Pack bundle as tar.gz (Unix)
