@@ -46,7 +46,7 @@ interface SetupProps {
 }
 
 export function Setup({ onComplete, embedded = false }: SetupProps) {
-  const [envStatus, setEnvStatus] = useState<EnvironmentStatus | null>(null);
+  const [, setEnvStatus] = useState<EnvironmentStatus | null>(null);
   const [checking, setChecking] = useState(true);
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
