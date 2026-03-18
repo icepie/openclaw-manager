@@ -1473,3 +1473,59 @@ openclaw --version
         }),
     }
 }
+
+/// 打开一个已注入 ~/.openclaw/bin 到 PATH 的终端
+#[command]
+pub async fn open_env_terminal() -> Result<String, String> {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_else(|_| "~".to_string());
+    let openclaw_bin = format!("{}/.openclaw/bin", home);
+
+    if platform::is_windows() {
+        // PowerShell: 在新窗口中注入 PATH 并保持打开
+        let script = format!(
+            r#"Start-Process powershell -ArgumentList '-NoExit', '-Command', '$env:PATH = "{bin};$env:PATH"; Write-Host "OpenClaw PATH 已注入: {bin}" -ForegroundColor Green; Write-Host "当前 PATH 包含: $(($env:PATH -split ";") -join "`n")" -ForegroundColor Gray'"#,
+            bin = openclaw_bin.replace('/', "\\")
+        );
+        shell::run_powershell_output(&script)?;
+        Ok("已打开终端（PATH 已注入）".to_string())
+    } else if platform::is_macos() {
+        let script_content = format!(
+            "#!/bin/sh\nexport PATH=\"{bin}:$PATH\"\nexec \"$SHELL\" -l\n",
+            bin = openclaw_bin
+        );
+        let script_path = "/tmp/openclaw_env_terminal.command";
+        std::fs::write(script_path, script_content)
+            .map_err(|e| format!("创建脚本失败: {}", e))?;
+        Command::new("chmod").args(["+x", script_path]).output()
+            .map_err(|e| format!("设置权限失败: {}", e))?;
+        Command::new("open").arg(script_path).spawn()
+            .map_err(|e| format!("启动终端失败: {}", e))?;
+        Ok("已打开终端（PATH 已注入）".to_string())
+    } else {
+        // Linux: 尝试常见终端模拟器
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+        let env_arg = format!("PATH={}:$PATH", openclaw_bin);
+        let terminals: &[(&str, &[&str])] = &[
+            ("gnome-terminal", &["--"]),
+            ("xterm", &["-e"]),
+            ("konsole", &["-e"]),
+            ("xfce4-terminal", &["-e"]),
+        ];
+        for (term, args) in terminals {
+            let mut cmd = Command::new(term);
+            cmd.args(*args).arg(&shell);
+            cmd.env("PATH", format!("{}:{}", openclaw_bin,
+                std::env::var("PATH").unwrap_or_default()));
+            if cmd.spawn().is_ok() {
+                return Ok(format!("已打开 {} （PATH 已注入）", term));
+            }
+        }
+        // fallback: 输出提示命令
+        Err(format!(
+            "未找到可用终端，请手动运行：\nexport PATH=\"{}:$PATH\"\n然后执行 {} -l",
+            openclaw_bin, shell
+        ))
+    }
+}

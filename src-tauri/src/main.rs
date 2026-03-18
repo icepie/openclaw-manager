@@ -70,6 +70,7 @@ fn main() {
             installer::install_openclaw,
             installer::init_openclaw_config,
             installer::open_install_terminal,
+            installer::open_env_terminal,
             installer::uninstall_openclaw,
             // 版本更新
             installer::check_openclaw_update,
