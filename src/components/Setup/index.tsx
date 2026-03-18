@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import {
   CheckCircle2,
   Loader2,
@@ -8,6 +9,9 @@ import {
   ArrowRight,
   RefreshCw,
   Package,
+  Pencil,
+  X,
+  Check,
 } from 'lucide-react';
 import { setupLogger } from '../../lib/logger';
 
@@ -30,6 +34,12 @@ interface InstallResult {
   error: string | null;
 }
 
+interface DownloadProgress {
+  downloaded: number;
+  total: number | null;
+  percent: number | null;
+}
+
 interface SetupProps {
   onComplete: () => void;
   embedded?: boolean;
@@ -41,6 +51,10 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<'check' | 'install' | 'complete'>('check');
+  const [bundleUrl, setBundleUrl] = useState('');
+  const [editingUrl, setEditingUrl] = useState(false);
+  const [editUrl, setEditUrl] = useState('');
+  const [progress, setProgress] = useState<DownloadProgress | null>(null);
 
   const checkEnvironment = async () => {
     setupLogger.info('检查系统环境...');
@@ -48,19 +62,14 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
     setError(null);
     try {
       const status = await invoke<EnvironmentStatus>('check_environment');
-      setupLogger.state('环境状态', status);
       setEnvStatus(status);
-
       if (status.openclaw_installed) {
-        setupLogger.info('✅ 环境就绪');
         setStep('complete');
         setTimeout(() => onComplete(), 1500);
       } else {
-        setupLogger.warn('OpenClaw 未安装');
         setStep('install');
       }
     } catch (e) {
-      setupLogger.error('检查环境失败', e);
       setError(`检查环境失败: ${e}`);
     } finally {
       setChecking(false);
@@ -68,7 +77,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
   };
 
   useEffect(() => {
-    setupLogger.info('Setup 组件初始化');
+    invoke<string>('get_bundle_download_url').then(setBundleUrl);
     checkEnvironment();
   }, []);
 
@@ -76,23 +85,45 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
     setupLogger.action('安装 OpenClaw');
     setInstalling(true);
     setError(null);
+    setProgress(null);
+
+    const unlisten = await listen<DownloadProgress>('bundle-download-progress', (e) => {
+      setProgress(e.payload);
+    });
 
     try {
-      const result = await invoke<InstallResult>('install_openclaw');
+      const result = await invoke<InstallResult>('install_openclaw', {
+        bundleUrl: bundleUrl || null,
+      });
 
       if (result.success) {
-        setupLogger.info('✅ OpenClaw 安装成功，初始化配置...');
         await invoke<InstallResult>('init_openclaw_config');
-        setupLogger.info('✅ 配置初始化完成');
         await checkEnvironment();
       } else {
-        setError(result.error || result.message || '安装失败，请重试');
+        setError(result.error || result.message || '安装失败，请检查 URL 后重试');
       }
     } catch (e) {
       setError(`安装失败: ${e}`);
     } finally {
+      unlisten();
       setInstalling(false);
+      setProgress(null);
     }
+  };
+
+  const startEditUrl = () => {
+    setEditUrl(bundleUrl);
+    setEditingUrl(true);
+  };
+
+  const confirmEditUrl = () => {
+    if (editUrl.trim()) setBundleUrl(editUrl.trim());
+    setEditingUrl(false);
+  };
+
+  const formatBytes = (bytes: number) => {
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   };
 
   const renderContent = () => {
@@ -113,7 +144,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
         )}
 
         {/* 安装步骤 */}
-        {!checking && step === 'install' && envStatus && (
+        {!checking && step === 'install' && (
           <motion.div
             key="install"
             initial={{ opacity: 0 }}
@@ -141,7 +172,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
                 {installing ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    安装中...
+                    {progress ? '下载中...' : '安装中...'}
                   </>
                 ) : (
                   <>
@@ -150,6 +181,59 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
                   </>
                 )}
               </button>
+            </div>
+
+            {/* 下载进度 */}
+            {installing && progress && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                className="space-y-1.5"
+              >
+                <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                  <span>{formatBytes(progress.downloaded)}{progress.total ? ` / ${formatBytes(progress.total)}` : ''}</span>
+                  <span>{progress.percent != null ? `${progress.percent.toFixed(1)}%` : ''}</span>
+                </div>
+                <div className="w-full h-1.5 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full bg-claw-500 rounded-full"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${progress.percent ?? 0}%` }}
+                    transition={{ ease: 'linear', duration: 0.2 }}
+                  />
+                </div>
+              </motion.div>
+            )}
+
+            {/* Bundle URL */}
+            <div className="pt-1">
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-1.5">Bundle 下载地址</p>
+              {editingUrl ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    className="input-base flex-1 text-xs py-1.5"
+                    value={editUrl}
+                    onChange={(e) => setEditUrl(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && confirmEditUrl()}
+                    autoFocus
+                  />
+                  <button onClick={confirmEditUrl} className="icon-btn text-green-500">
+                    <Check className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => setEditingUrl(false)} className="icon-btn">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 group">
+                  <p className="flex-1 text-xs text-gray-500 dark:text-gray-400 truncate font-mono bg-gray-100 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.06] rounded-lg px-2.5 py-1.5">
+                    {bundleUrl}
+                  </p>
+                  <button onClick={startEditUrl} className="icon-btn opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* 错误信息 */}
@@ -163,7 +247,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
               </motion.div>
             )}
 
-            {/* 操作按钮 */}
+            {/* 重新检查 */}
             <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-white/[0.08]">
               <button
                 onClick={checkEnvironment}
@@ -207,7 +291,6 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
     );
   };
 
-  // 嵌入模式
   if (embedded) {
     return (
       <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-2xl p-6">
@@ -225,7 +308,6 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
     );
   }
 
-  // 全屏模式
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-[#0d0d0f] flex items-center justify-center p-8">
       <div className="fixed inset-0 pointer-events-none">

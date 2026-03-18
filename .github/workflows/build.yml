@@ -71,10 +71,13 @@ jobs:
 
       - name: Pack bundle as tar.gz (Windows)
         if: matrix.os == 'windows'
+        shell: pwsh
         run: |
-          cd src-tauri/bundle/resources
+          $bundlePath = "src-tauri/bundle/resources/openclaw-bundle"
+          if (-not (Test-Path $bundlePath)) { throw "Bundle directory not found: $bundlePath" }
+          Set-Location src-tauri/bundle/resources
           tar -czf openclaw-bundle-${{ matrix.os }}-${{ matrix.arch }}.tar.gz openclaw-bundle/
-          mv openclaw-bundle-${{ matrix.os }}-${{ matrix.arch }}.tar.gz ../../../
+          Move-Item openclaw-bundle-${{ matrix.os }}-${{ matrix.arch }}.tar.gz ../../../
 
       - name: Upload bundle artifact
         uses: actions/upload-artifact@v4
@@ -146,6 +149,10 @@ jobs:
 
       - name: Install frontend dependencies
         run: pnpm install
+
+      # Tauri build 要求 bundle/resources/openclaw-bundle 目录存在（即使为空）
+      - name: Ensure bundle placeholder exists
+        run: mkdir -p src-tauri/bundle/resources/openclaw-bundle
 
       # app 构建跳过 bundle 准备（bundle 单独发布）
       - name: Build Tauri app (macOS Universal)

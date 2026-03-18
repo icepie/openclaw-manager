@@ -843,7 +843,7 @@ fn try_install_openclaw_offline(app: &tauri::AppHandle) -> Option<bool> {
 
 // ── bundle 下载安装 ────────────────────────────────────────────────────────────
 
-/// 返回当前平台对应的 bundle 下载 URL（从 GitHub Release 获取）
+/// 返回当前平台对应的 bundle 默认下载 URL
 #[command]
 pub fn get_bundle_download_url() -> String {
     let os = match std::env::consts::OS {
@@ -1020,7 +1020,7 @@ async fn download_and_install_bundle(app: &tauri::AppHandle, url: &str) -> Resul
 // ── 安装 OpenClaw ─────────────────────────────────────────────────────────────
 
 #[command]
-pub async fn install_openclaw(app: tauri::AppHandle) -> Result<InstallResult, String> {
+pub async fn install_openclaw(app: tauri::AppHandle, bundle_url: Option<String>) -> Result<InstallResult, String> {
     info!("[安装OpenClaw] 开始安装 OpenClaw...");
 
     // 1. 优先本地 bundle（打包进 app 的）
@@ -1033,9 +1033,9 @@ pub async fn install_openclaw(app: tauri::AppHandle) -> Result<InstallResult, St
         });
     }
 
-    // 2. 本地没有，从 GitHub Release 下载 bundle 安装
-    let url = get_bundle_download_url();
-    info!("[安装OpenClaw] 本地 bundle 不存在，从远程下载: {}", url);
+    // 2. 本地没有，从指定 URL（或默认）下载 bundle 安装
+    let url = bundle_url.unwrap_or_else(get_bundle_download_url);
+    info!("[安装OpenClaw] 从远程下载: {}", url);
     match download_and_install_bundle(&app, &url).await {
         Ok(()) => {
             info!("[安装OpenClaw] ✓ 下载安装成功");
