@@ -33,3 +33,4 @@ src-tauri/Cargo.lock
 src-tauri/bundle/resources/openclaw-bundle/
 !src-tauri/bundle/resources/openclaw-bundle/.gitkeep
 .tmp/
+ex/
