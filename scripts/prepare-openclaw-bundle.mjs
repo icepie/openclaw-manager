@@ -245,7 +245,7 @@ async function main() {
 
   try {
     run("npm", [
-      "install", "--prefix", installPrefix, bundledTgz,
+      "install", "-g", "--prefix", installPrefix, bundledTgz,
       "--cache", cacheDir,
       "--no-audit", "--no-fund", "--loglevel=error",
     ]);

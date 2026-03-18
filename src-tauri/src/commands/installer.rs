@@ -832,6 +832,7 @@ fn install_openclaw_from_bundle_dir(bundle_dir: &PathBuf, install_dir: Option<&P
     let output = Command::new(&node_bin)
         .arg(&npm_cli)
         .arg("install")
+        .arg("-g")
         .arg("--prefix").arg(&prefix)
         .arg(&openclaw_tgz)
         .arg("--cache").arg(&npm_cache)
