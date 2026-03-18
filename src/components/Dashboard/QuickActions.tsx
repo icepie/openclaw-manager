@@ -1,4 +1,4 @@
-import { Play, Square, RotateCcw } from 'lucide-react';
+import { Play, Square, RotateCcw, Terminal } from 'lucide-react';
 import clsx from 'clsx';
 
 interface ServiceStatus {
@@ -13,9 +13,10 @@ interface QuickActionsProps {
   onStart: () => void;
   onStop: () => void;
   onRestart: () => void;
+  onOpenTerminal: () => void;
 }
 
-export function QuickActions({ status, loading, onStart, onStop, onRestart }: QuickActionsProps) {
+export function QuickActions({ status, loading, onStart, onStop, onRestart, onOpenTerminal }: QuickActionsProps) {
   const running = status?.running ?? false;
 
   const actions = [
@@ -44,7 +45,52 @@ export function QuickActions({ status, loading, onStart, onStop, onRestart }: Qu
       hoverBg: 'hover:bg-amber-50 dark:hover:bg-amber-500/10 hover:border-amber-200 dark:hover:border-amber-500/20',
       spin: loading,
     },
+    {
+      label: '终端',
+      icon: Terminal,
+      onClick: onOpenTerminal,
+      disabled: false,
+      activeColor: 'text-blue-500',
+      hoverBg: 'hover:bg-blue-50 dark:hover:bg-blue-500/10 hover:border-blue-200 dark:hover:border-blue-500/20',
+    },
   ];
+
+  return (
+    <div className="card p-5">
+      <span className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-4">快捷操作</span>
+      <div className="flex gap-3">
+        {actions.map(({ label, icon: Icon, onClick, disabled, activeColor, hoverBg, spin }) => (
+          <button
+            key={label}
+            onClick={onClick}
+            disabled={disabled}
+            className={clsx(
+              'flex-1 flex flex-col items-center gap-2 py-4 rounded-xl border transition-all duration-150',
+              'border-gray-100 dark:border-white/[0.06]',
+              'bg-gray-50/50 dark:bg-white/[0.02]',
+              disabled ? 'opacity-40 cursor-not-allowed' : hoverBg
+            )}
+          >
+            <Icon
+              size={18}
+              className={clsx(
+                'transition-colors',
+                disabled ? 'text-gray-400 dark:text-gray-600' : activeColor,
+                spin && 'animate-spin'
+              )}
+            />
+            <span className={clsx(
+              'text-xs font-medium',
+              disabled ? 'text-gray-400 dark:text-gray-600' : 'text-gray-600 dark:text-gray-400'
+            )}>
+              {label}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
   return (
     <div className="card p-5">

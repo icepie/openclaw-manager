@@ -113,6 +113,11 @@ pub async fn start_service() -> Result<String, String> {
     }
     
     info!("[服务] 等待超时，端口仍未监听");
+    // 把超时错误写入 gateway 日志，方便用户在 Logs 页面看到
+    let logs_dir = format!("{}/logs", crate::utils::platform::get_config_dir());
+    let err_log = format!("{}/gateway.err.log", logs_dir);
+    let ts = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S");    let _ = std::fs::OpenOptions::new().create(true).append(true).open(&err_log)
+        .and_then(|mut f| { use std::io::Write; writeln!(f, "[{}] 服务启动超时（15秒），请检查配置", ts) });
     Err("服务启动超时（15秒），请检查 openclaw 日志".to_string())
 }
 

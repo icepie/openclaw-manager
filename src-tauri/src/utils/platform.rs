@@ -11,7 +11,13 @@ pub fn get_arch() -> String {
 }
 
 /// 获取配置目录路径
+/// 优先读取 OPENCLAW_HOME 环境变量，否则默认 ~/.openclaw
 pub fn get_config_dir() -> String {
+    if let Ok(custom) = env::var("OPENCLAW_HOME") {
+        if !custom.is_empty() {
+            return custom;
+        }
+    }
     if let Some(home) = dirs::home_dir() {
         if is_windows() {
             format!("{}\\.openclaw", home.display())

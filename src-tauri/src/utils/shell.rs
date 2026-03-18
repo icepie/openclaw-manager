@@ -15,17 +15,15 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 /// 获取扩展的 PATH 环境变量
 /// GUI 应用启动时可能没有继承用户 shell 的 PATH，需要手动添加常见路径
 pub fn get_extended_path() -> String {
+    let config_dir = platform::get_config_dir();
     let mut paths = Vec::new();
 
-    if let Some(home) = dirs::home_dir() {
-        let home_str = home.display().to_string();
-        // 离线安装的 bundled node 和 openclaw bin（最高优先级）
-        paths.push(format!("{}/.openclaw/node", home_str));
-        paths.push(format!("{}/.openclaw/bin", home_str));
-        // Windows: npm -g --prefix 把 bin links 放在 node_modules/.bin/
-        if cfg!(target_os = "windows") {
-            paths.push(format!("{}/.openclaw/node_modules/.bin", home_str));
-        }
+    // 离线安装的 bundled node 和 openclaw bin（最高优先级）
+    paths.push(format!("{}/node", config_dir));
+    paths.push(format!("{}/bin", config_dir));
+    // Windows: npm -g --prefix 把 bin links 放在 node_modules/.bin/
+    if cfg!(target_os = "windows") {
+        paths.push(format!("{}/node_modules/.bin", config_dir));
     }
 
     // 系统常见路径兜底
@@ -257,15 +255,10 @@ pub fn get_openclaw_path() -> Option<String> {
 
 /// 获取 Unix 系统上可能的 openclaw 安装路径
 fn get_unix_openclaw_paths() -> Vec<String> {
+    let config_dir = platform::get_config_dir();
     let mut paths = Vec::new();
 
-    if let Some(home) = dirs::home_dir() {
-        let home_str = home.display().to_string();
-        // 离线安装路径（最高优先级）
-        paths.push(format!("{}/.openclaw/bin/openclaw", home_str));
-    }
-
-    // 系统 PATH 兜底
+    paths.push(format!("{}/bin/openclaw", config_dir));
     paths.push("/usr/local/bin/openclaw".to_string());
     paths.push("/opt/homebrew/bin/openclaw".to_string());
     paths.push("/usr/bin/openclaw".to_string());
@@ -274,16 +267,17 @@ fn get_unix_openclaw_paths() -> Vec<String> {
 }
 
 fn get_windows_openclaw_paths() -> Vec<String> {
+    let config_dir = platform::get_config_dir();
     let mut paths = Vec::new();
 
+    // Windows: npm -g --prefix puts bin links in node_modules/.bin/
+    paths.push(format!("{}/node_modules/.bin/openclaw.cmd", config_dir));
+    paths.push(format!("{}/node_modules/.bin/openclaw", config_dir));
+    // fallback: root-level .cmd or bin/ layout
+    paths.push(format!("{}/openclaw.cmd", config_dir));
+    paths.push(format!("{}/bin/openclaw.cmd", config_dir));
+    // npm 全局安装
     if let Some(home) = dirs::home_dir() {
-        // Windows: npm -g --prefix puts bin links in node_modules/.bin/
-        paths.push(format!("{}/.openclaw/node_modules/.bin/openclaw.cmd", home.display()));
-        paths.push(format!("{}/.openclaw/node_modules/.bin/openclaw", home.display()));
-        // fallback: root-level .cmd or bin/ layout
-        paths.push(format!("{}/.openclaw/openclaw.cmd", home.display()));
-        paths.push(format!("{}/.openclaw/bin/openclaw.cmd", home.display()));
-        // npm 全局安装
         paths.push(format!("{}\\AppData\\Roaming\\npm\\openclaw.cmd", home.display()));
     }
 

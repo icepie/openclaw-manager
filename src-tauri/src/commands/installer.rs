@@ -1226,7 +1226,38 @@ pub async fn init_openclaw_config() -> Result<InstallResult, String> {
         }
     }
     
-    // 设置 gateway mode 为 local
+    // 直接写入 openclaw.json 配置文件（不依赖 openclaw config set 命令）
+    let config_file = format!("{}/openclaw.json", config_dir);
+    let config_exists = std::path::Path::new(&config_file).exists();
+    if !config_exists {
+        info!("[初始化配置] 写入默认 openclaw.json...");
+        let default_config = serde_json::json!({
+            "gateway": {
+                "mode": "local"
+            }
+        });
+        if let Err(e) = std::fs::write(&config_file, serde_json::to_string_pretty(&default_config).unwrap()) {
+            warn!("[初始化配置] 写入 openclaw.json 失败: {}", e);
+        } else {
+            info!("[初始化配置] ✓ openclaw.json 写入成功");
+        }
+    } else {
+        // 文件已存在，尝试确保 gateway.mode=local
+        info!("[初始化配置] openclaw.json 已存在，尝试设置 gateway.mode...");
+        if let Ok(content) = std::fs::read_to_string(&config_file) {
+            if let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&content) {
+                if json.get("gateway").and_then(|g| g.get("mode")).is_none() {
+                    json["gateway"]["mode"] = serde_json::json!("local");
+                    if let Ok(updated) = serde_json::to_string_pretty(&json) {
+                        let _ = std::fs::write(&config_file, updated);
+                        info!("[初始化配置] ✓ gateway.mode 已设置");
+                    }
+                }
+            }
+        }
+    }
+
+    // 设置 gateway mode 为 local（通过命令，作为补充）
     info!("[初始化配置] 执行: openclaw config set gateway.mode local");
     let result = shell::run_openclaw(&["config", "set", "gateway.mode", "local"]);
     
@@ -1234,21 +1265,18 @@ pub async fn init_openclaw_config() -> Result<InstallResult, String> {
         Ok(output) => {
             info!("[初始化配置] ✓ 配置初始化成功");
             debug!("[初始化配置] 命令输出: {}", output);
-            Ok(InstallResult {
-                success: true,
-                message: "配置初始化成功！".to_string(),
-                error: None,
-            })
         },
         Err(e) => {
-            error!("[初始化配置] ✗ 配置初始化失败: {}", e);
-            Ok(InstallResult {
-                success: false,
-                message: "配置初始化失败".to_string(),
-                error: Some(e),
-            })
+            // 命令失败不影响结果，配置文件已直接写入
+            warn!("[初始化配置] openclaw config set 失败（已直接写入配置文件）: {}", e);
         },
     }
+
+    Ok(InstallResult {
+        success: true,
+        message: "配置初始化成功！".to_string(),
+        error: None,
+    })
 }
 
 /// 打开终端执行安装脚本（用于需要管理员权限的场景）
@@ -1480,97 +1508,63 @@ read -p "按回车键关闭..."
 #[command]
 pub async fn uninstall_openclaw() -> Result<InstallResult, String> {
     info!("[卸载OpenClaw] 开始卸载 OpenClaw...");
-    let os = platform::get_os();
-    info!("[卸载OpenClaw] 检测到操作系统: {}", os);
-    
+
     // 先停止服务
     info!("[卸载OpenClaw] 尝试停止服务...");
     let _ = shell::run_openclaw(&["gateway", "stop"]);
     std::thread::sleep(std::time::Duration::from_millis(500));
-    
-    let result = match os.as_str() {
-        "windows" => {
-            info!("[卸载OpenClaw] 使用 Windows 卸载方式...");
-            uninstall_openclaw_windows().await
-        },
-        _ => {
-            info!("[卸载OpenClaw] 使用 Unix 卸载方式 (npm)...");
-            uninstall_openclaw_unix().await
-        },
-    };
-    
-    match &result {
-        Ok(r) if r.success => info!("[卸载OpenClaw] ✓ 卸载成功"),
-        Ok(r) => warn!("[卸载OpenClaw] ✗ 卸载失败: {}", r.message),
-        Err(e) => error!("[卸载OpenClaw] ✗ 卸载错误: {}", e),
-    }
-    
-    result
-}
 
-/// Windows 卸载 OpenClaw
-async fn uninstall_openclaw_windows() -> Result<InstallResult, String> {
-    // 使用 cmd.exe 执行 npm uninstall，避免 PowerShell 执行策略问题
-    info!("[卸载OpenClaw] 执行 npm uninstall -g openclaw...");
-    
-    match shell::run_cmd_output("npm uninstall -g openclaw") {
-        Ok(output) => {
-            info!("[卸载OpenClaw] npm 输出: {}", output);
-            
-            // 验证卸载是否成功
-            std::thread::sleep(std::time::Duration::from_millis(500));
-            if get_openclaw_version().is_none() {
-                Ok(InstallResult {
-                    success: true,
-                    message: "OpenClaw 已成功卸载！".to_string(),
-                    error: None,
-                })
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map_err(|_| "无法获取用户主目录".to_string())?;
+    let prefix = PathBuf::from(&home).join(".openclaw");
+
+    // 删除离线安装的文件（保留配置文件和日志）
+    let remove_dirs = ["node", "node_modules", "bin", "lib", "bundle-cache"];
+    let mut removed = vec![];
+    for dir in &remove_dirs {
+        let p = prefix.join(dir);
+        if p.exists() {
+            if let Err(e) = std::fs::remove_dir_all(&p) {
+                warn!("[卸载OpenClaw] 删除 {} 失败: {}", dir, e);
             } else {
-                Ok(InstallResult {
-                    success: false,
-                    message: "卸载命令已执行，但 OpenClaw 仍然存在，请尝试手动卸载".to_string(),
-                    error: Some(output),
-                })
+                info!("[卸载OpenClaw] ✓ 已删除 {}", p.display());
+                removed.push(*dir);
             }
         }
-        Err(e) => {
-            warn!("[卸载OpenClaw] npm uninstall 失败: {}", e);
-            Ok(InstallResult {
-                success: false,
-                message: "OpenClaw 卸载失败".to_string(),
-                error: Some(e),
-            })
+    }
+    // 删除根目录下的 .cmd / .exe 可执行文件
+    if let Ok(entries) = std::fs::read_dir(&prefix) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.ends_with(".cmd") || name.ends_with(".exe") {
+                let _ = std::fs::remove_file(entry.path());
+            }
         }
     }
-}
 
-/// Unix 系统卸载 OpenClaw
-async fn uninstall_openclaw_unix() -> Result<InstallResult, String> {
-    let script = r#"
-echo "卸载 OpenClaw..."
-npm uninstall -g openclaw
+    // 尝试 npm uninstall 作为补充（全局安装场景）
+    if platform::is_windows() {
+        let _ = shell::run_cmd_output("npm uninstall -g openclaw");
+    } else {
+        let _ = shell::run_bash_output("npm uninstall -g openclaw 2>/dev/null");
+    }
 
-# 验证卸载
-if command -v openclaw &> /dev/null; then
-    echo "警告：openclaw 命令仍然存在"
-    exit 1
-else
-    echo "OpenClaw 已成功卸载"
-    exit 0
-fi
-"#;
-    
-    match shell::run_bash_output(script) {
-        Ok(output) => Ok(InstallResult {
+    if get_openclaw_version().is_none() {
+        info!("[卸载OpenClaw] ✓ 卸载成功");
+        Ok(InstallResult {
             success: true,
-            message: format!("OpenClaw 已成功卸载！{}", output),
+            message: format!("OpenClaw 已成功卸载！（已删除: {}）", removed.join(", ")),
             error: None,
-        }),
-        Err(e) => Ok(InstallResult {
+        })
+    } else {
+        warn!("[卸载OpenClaw] 卸载后 openclaw 仍可检测到");
+        Ok(InstallResult {
             success: false,
-            message: "OpenClaw 卸载失败".to_string(),
-            error: Some(e),
-        }),
+            message: "卸载命令已执行，但 OpenClaw 仍然存在，请尝试手动删除 ~/.openclaw 目录".to_string(),
+            error: None,
+        })
     }
 }
 

@@ -112,6 +112,15 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
     }
   };
 
+  const handleOpenTerminal = async () => {
+    if (!isTauri()) return;
+    try {
+      await invoke('open_env_terminal');
+    } catch (e) {
+      console.error('打开终端失败:', e);
+    }
+  };
+
   const getLogLineClass = (line: string) => {
     if (line.includes('error') || line.includes('Error') || line.includes('ERROR')) {
       return 'text-red-400';
@@ -170,6 +179,7 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
               onStart={handleStart}
               onStop={handleStop}
               onRestart={handleRestart}
+              onOpenTerminal={handleOpenTerminal}
             />
           </div>
         </motion.div>
