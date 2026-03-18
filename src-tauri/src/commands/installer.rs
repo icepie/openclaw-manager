@@ -103,58 +103,66 @@ pub async fn check_environment() -> Result<EnvironmentStatus, String> {
 /// 获取 Node.js 版本
 /// 检测多个可能的安装路径，因为 GUI 应用不继承用户 shell 的 PATH
 fn get_node_version() -> Option<String> {
+    // 优先检查离线安装的 bundled node
+    if let Some(home) = dirs::home_dir() {
+        let bundled = if platform::is_windows() {
+            home.join(".openclaw").join("node").join("node.exe")
+        } else {
+            home.join(".openclaw").join("node").join("node")
+        };
+        if bundled.exists() {
+            let result = if platform::is_windows() {
+                shell::run_cmd_output(&format!("\"{}\" --version", bundled.display()))
+            } else {
+                shell::run_command_output(&bundled.to_string_lossy(), &["--version"])
+            };
+            if let Ok(v) = result {
+                let v = v.trim().to_string();
+                if v.starts_with('v') {
+                    info!("[环境检查] 找到 bundled Node.js: {}", v);
+                    return Some(v);
+                }
+            }
+        }
+    }
+
     if platform::is_windows() {
-        // Windows: 先尝试直接调用（如果 PATH 已更新）
         if let Ok(v) = shell::run_cmd_output("node --version") {
             let version = v.trim().to_string();
             if !version.is_empty() && version.starts_with('v') {
-                info!("[环境检查] 通过 PATH 找到 Node.js: {}", version);
                 return Some(version);
             }
         }
-        
-        // Windows: 检查常见的安装路径
         let possible_paths = get_windows_node_paths();
         for path in possible_paths {
             if std::path::Path::new(&path).exists() {
-                // 使用完整路径执行
                 let cmd = format!("\"{}\" --version", path);
                 if let Ok(output) = shell::run_cmd_output(&cmd) {
                     let version = output.trim().to_string();
                     if !version.is_empty() && version.starts_with('v') {
-                        info!("[环境检查] 在 {} 找到 Node.js: {}", path, version);
                         return Some(version);
                     }
                 }
             }
         }
-        
         None
     } else {
-        // 先尝试直接调用
         if let Ok(v) = shell::run_command_output("node", &["--version"]) {
             return Some(v.trim().to_string());
         }
-        
-        // 检测常见的 Node.js 安装路径（macOS/Linux）
         let possible_paths = get_unix_node_paths();
         for path in possible_paths {
             if std::path::Path::new(&path).exists() {
                 if let Ok(output) = shell::run_command_output(&path, &["--version"]) {
-                    info!("[环境检查] 在 {} 找到 Node.js: {}", path, output.trim());
                     return Some(output.trim().to_string());
                 }
             }
         }
-        
-        // 尝试通过 shell 加载用户环境来检测
         if let Ok(output) = shell::run_bash_output("source ~/.zshrc 2>/dev/null || source ~/.bashrc 2>/dev/null; node --version 2>/dev/null") {
             if !output.is_empty() && output.starts_with('v') {
-                info!("[环境检查] 通过用户 shell 找到 Node.js: {}", output.trim());
                 return Some(output.trim().to_string());
             }
         }
-        
         None
     }
 }
