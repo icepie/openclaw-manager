@@ -16,6 +16,74 @@ env:
   APPIMAGE_EXTRACT_AND_RUN: 1
 
 jobs:
+  # ── 构建离线 bundle（各平台独立，产物上传到 Release）────────────────────────
+  build-bundle:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            os: macos
+            arch: arm64
+            label: macOS-arm64
+          - platform: macos-13
+            os: macos
+            arch: x64
+            label: macOS-x64
+          - platform: windows-latest
+            os: windows
+            arch: x64
+            label: Windows-x64
+          - platform: ubuntu-22.04
+            os: linux
+            arch: x64
+            label: Linux-x64
+
+    runs-on: ${{ matrix.platform }}
+    name: Bundle (${{ matrix.label }})
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Prepare openclaw bundle
+        env:
+          OPENCLAW_BUNDLE_NODE_ARCH: ${{ matrix.arch }}
+          OPENCLAW_BUNDLE_SKIP_VERIFY: ${{ (matrix.arch == 'arm64' && runner.arch == 'X64') && '1' || '0' }}
+        run: node scripts/prepare-openclaw-bundle.mjs
+
+      - name: Pack bundle as tar.gz (Unix)
+        if: matrix.os != 'windows'
+        run: |
+          cd src-tauri/bundle/resources
+          tar -czf openclaw-bundle-${{ matrix.os }}-${{ matrix.arch }}.tar.gz openclaw-bundle/
+          mv openclaw-bundle-${{ matrix.os }}-${{ matrix.arch }}.tar.gz ../../../
+
+      - name: Pack bundle as tar.gz (Windows)
+        if: matrix.os == 'windows'
+        run: |
+          cd src-tauri/bundle/resources
+          tar -czf openclaw-bundle-${{ matrix.os }}-${{ matrix.arch }}.tar.gz openclaw-bundle/
+          mv openclaw-bundle-${{ matrix.os }}-${{ matrix.arch }}.tar.gz ../../../
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-${{ matrix.label }}
+          path: openclaw-bundle-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+
+  # ── 构建 App（不内嵌 bundle）────────────────────────────────────────────────
   build:
     strategy:
       fail-fast: false
@@ -25,19 +93,14 @@ jobs:
             target: universal-apple-darwin
             rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
             label: macOS
-            # macOS Universal 需要同时打包 x64 和 arm64 的 node runtime
-            # 构建时先用 arm64 bundle（Apple Silicon runner），x64 bundle 单独准备
-            node_arch: arm64
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             rust_targets: x86_64-pc-windows-msvc
             label: Windows
-            node_arch: x64
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             rust_targets: x86_64-unknown-linux-gnu
             label: Linux
-            node_arch: x64
 
     runs-on: ${{ matrix.platform }}
     name: Build (${{ matrix.label }})
@@ -46,7 +109,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── 系统依赖 ──────────────────────────────────────────
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
         run: |
@@ -60,7 +122,6 @@ jobs:
             libsoup-3.0-dev \
             libjavascriptcoregtk-4.1-dev
 
-      # ── Rust 工具链 ──────────────────────────────────────
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -72,7 +133,6 @@ jobs:
           workspaces: src-tauri
           cache-on-failure: true
 
-      # ── Node.js ──────────────────────────────────────────
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -87,20 +147,13 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
-      # ── 准备离线 bundle ───────────────────────────────────
-      - name: Prepare openclaw offline bundle
-        env:
-          OPENCLAW_BUNDLE_NODE_ARCH: ${{ matrix.node_arch }}
-          # 跳过 cross-arch 二进制的运行验证
-          OPENCLAW_BUNDLE_SKIP_VERIFY: ${{ matrix.node_arch != 'x64' && runner.arch == 'X64' && '1' || matrix.node_arch != 'arm64' && runner.arch == 'ARM64' && '1' || '0' }}
-        run: node scripts/prepare-openclaw-bundle.mjs
-
-      # ── 构建 ─────────────────────────────────────────────
+      # app 构建跳过 bundle 准备（bundle 单独发布）
       - name: Build Tauri app (macOS Universal)
         if: matrix.platform == 'macos-latest'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENCLAW_DESKTOP_SKIP_BUNDLE_PREP: 1
         with:
           args: --target universal-apple-darwin
 
@@ -109,8 +162,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENCLAW_DESKTOP_SKIP_BUNDLE_PREP: 1
 
-      # ── 上传构建产物 ─────────────────────────────────────
       - name: Upload macOS artifacts
         if: matrix.platform == 'macos-latest'
         uses: actions/upload-artifact@v4
@@ -141,10 +194,10 @@ jobs:
             src-tauri/target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
 
-  # ── Dev 预发布（每次 main 分支推送）──────────────────────────
+  # ── Dev 预发布 ────────────────────────────────────────────────────────────────
   dev-release:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    needs: build
+    needs: [build, build-bundle]
     runs-on: ubuntu-latest
     name: Dev Release
     permissions:
@@ -166,6 +219,10 @@ jobs:
           body: |
             自动构建自 `main` 分支，commit: ${{ github.sha }}
 
+            **安装说明：**
+            1. 下载对应平台的 App 安装包
+            2. 首次运行时，App 会自动从本 Release 下载对应平台的 `openclaw-bundle-*.tar.gz` 并安装
+
             > 这是开发版本，不保证稳定性。正式版请查看 [Releases](../../releases)。
           files: |
             artifacts/**/*.dmg
@@ -173,13 +230,14 @@ jobs:
             artifacts/**/*.exe
             artifacts/**/*.deb
             artifacts/**/*.AppImage
+            artifacts/**/openclaw-bundle-*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # ── 发布 Release ───────────────────────────────────────────
+  # ── 正式 Release ──────────────────────────────────────────────────────────────
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [build, build-bundle]
     runs-on: ubuntu-latest
     name: Create Release
     permissions:
@@ -207,5 +265,6 @@ jobs:
             artifacts/**/*.exe
             artifacts/**/*.deb
             artifacts/**/*.AppImage
+            artifacts/**/openclaw-bundle-*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

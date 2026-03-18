@@ -1,6 +1,6 @@
 use crate::utils::{platform, shell};
 use serde::{Deserialize, Serialize};
-use tauri::{command, Manager};
+use tauri::{command, Emitter, Manager};
 use log::{info, warn, error, debug};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -841,35 +841,216 @@ fn try_install_openclaw_offline(app: &tauri::AppHandle) -> Option<bool> {
     }
 }
 
+// ── bundle 下载安装 ────────────────────────────────────────────────────────────
+
+/// 返回当前平台对应的 bundle 下载 URL（从 GitHub Release 获取）
+#[command]
+pub fn get_bundle_download_url() -> String {
+    let os = match std::env::consts::OS {
+        "windows" => "windows",
+        "macos" => "macos",
+        _ => "linux",
+    };
+    let arch = match std::env::consts::ARCH {
+        "aarch64" => "arm64",
+        _ => "x64",
+    };
+    format!(
+        "https://github.com/icepie/openclaw-manager/releases/latest/download/openclaw-bundle-{}-{}.tar.gz",
+        os, arch
+    )
+}
+
+/// 下载进度事件 payload
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadProgress {
+    pub downloaded: u64,
+    pub total: Option<u64>,
+    pub percent: Option<f64>,
+}
+
+/// 用 reqwest 下载文件，支持断点续传，通过 Tauri 事件推送进度
+async fn download_file(
+    app: &tauri::AppHandle,
+    url: &str,
+    out: &PathBuf,
+) -> Result<(), String> {
+    use tokio::io::AsyncWriteExt;
+    use futures_util::StreamExt;
+
+    if let Some(parent) = out.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let tmp = out.with_extension("download");
+
+    // 检查已下载的字节数（断点续传）
+    let resume_from = if tmp.exists() {
+        tmp.metadata().map(|m| m.len()).unwrap_or(0)
+    } else {
+        0
+    };
+
+    let client = reqwest::Client::builder()
+        .user_agent("openclaw-manager")
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+
+    let mut req = client.get(url);
+    if resume_from > 0 {
+        info!("[下载] 断点续传，从 {} 字节继续", resume_from);
+        req = req.header("Range", format!("bytes={}-", resume_from));
+    }
+
+    let resp = req.send().await
+        .map_err(|e| format!("HTTP 请求失败: {}", e))?;
+
+    let status = resp.status();
+    // 206 = Partial Content（断点续传成功），200 = 全量下载
+    if !status.is_success() {
+        return Err(format!("下载失败，HTTP {}", status));
+    }
+
+    let total = resp.content_length().map(|len| {
+        if resume_from > 0 && status == reqwest::StatusCode::PARTIAL_CONTENT {
+            len + resume_from
+        } else {
+            len
+        }
+    });
+
+    // 追加模式（断点续传）或覆盖模式
+    let append = resume_from > 0 && status == reqwest::StatusCode::PARTIAL_CONTENT;
+    let mut file = tokio::fs::OpenOptions::new()
+        .create(true)
+        .append(append)
+        .write(!append)
+        .truncate(!append)
+        .open(&tmp)
+        .await
+        .map_err(|e| format!("打开临时文件失败: {}", e))?;
+
+    let mut downloaded = if append { resume_from } else { 0u64 };
+    let mut stream = resp.bytes_stream();
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("读取数据失败: {}", e))?;
+        file.write_all(&chunk).await
+            .map_err(|e| format!("写入文件失败: {}", e))?;
+        downloaded += chunk.len() as u64;
+
+        let percent = total.map(|t| if t > 0 { downloaded as f64 / t as f64 * 100.0 } else { 0.0 });
+        let _ = app.emit("bundle-download-progress", DownloadProgress {
+            downloaded,
+            total,
+            percent,
+        });
+    }
+
+    file.flush().await.map_err(|e| format!("刷新文件失败: {}", e))?;
+    drop(file);
+
+    let _ = fs::remove_file(out);
+    fs::rename(&tmp, out).map_err(|e| format!("重命名文件失败: {}", e))?;
+    Ok(())
+}
+
+fn extract_tar_gz(archive: &PathBuf, dest: &PathBuf) -> Result<(), String> {
+    fs::create_dir_all(dest).map_err(|e| e.to_string())?;
+    let o = Command::new("tar")
+        .arg("-xzf").arg(archive)
+        .arg("-C").arg(dest)
+        .output()
+        .map_err(|e| format!("tar 解压失败: {}", e))?;
+    if o.status.success() {
+        return Ok(());
+    }
+    // Windows: tar 可能不支持 -z，尝试不带 -z
+    let o2 = Command::new("tar")
+        .arg("-xf").arg(archive)
+        .arg("-C").arg(dest)
+        .output()
+        .map_err(|e| format!("tar 解压失败: {}", e))?;
+    if o2.status.success() {
+        return Ok(());
+    }
+    Err(format!("tar 解压失败: {}", String::from_utf8_lossy(&o2.stderr).trim()))
+}
+
+async fn download_and_install_bundle(app: &tauri::AppHandle, url: &str) -> Result<(), String> {
+    let cache_dir = {
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .map_err(|_| "无法获取用户主目录".to_string())?;
+        PathBuf::from(home).join(".openclaw").join("bundle-cache")
+    };
+    fs::create_dir_all(&cache_dir).map_err(|e| e.to_string())?;
+
+    let archive = cache_dir.join("openclaw-bundle.tar.gz");
+    let extract_dir = cache_dir.join("extract");
+
+    info!("[下载安装] 下载 bundle: {}", url);
+    download_file(app, url, &archive).await?;
+
+    info!("[下载安装] 解压 bundle...");
+    if extract_dir.exists() {
+        fs::remove_dir_all(&extract_dir).map_err(|e| e.to_string())?;
+    }
+    extract_tar_gz(&archive, &extract_dir)?;
+
+    // 找到解压后的 openclaw-bundle 目录
+    let bundle_dir = if extract_dir.join("openclaw-bundle").exists() {
+        extract_dir.join("openclaw-bundle")
+    } else {
+        extract_dir.clone()
+    };
+
+    info!("[下载安装] 从下载的 bundle 安装...");
+    match install_openclaw_from_bundle_dir(&bundle_dir) {
+        Ok(true) => {
+            let _ = fs::remove_file(&archive);
+            let _ = fs::remove_dir_all(&extract_dir);
+            Ok(())
+        }
+        Ok(false) => Err("bundle 安装失败：payload 不完整".to_string()),
+        Err(e) => Err(e),
+    }
+}
+
 // ── 安装 OpenClaw ─────────────────────────────────────────────────────────────
 
 #[command]
 pub async fn install_openclaw(app: tauri::AppHandle) -> Result<InstallResult, String> {
     info!("[安装OpenClaw] 开始安装 OpenClaw...");
 
-    match try_install_openclaw_offline(&app) {
-        Some(true) => {
-            info!("[安装OpenClaw] ✓ 离线安装成功");
+    // 1. 优先本地 bundle（打包进 app 的）
+    if let Some(true) = try_install_openclaw_offline(&app) {
+        info!("[安装OpenClaw] ✓ 本地 bundle 安装成功");
+        return Ok(InstallResult {
+            success: true,
+            message: "OpenClaw 安装成功！".to_string(),
+            error: None,
+        });
+    }
+
+    // 2. 本地没有，从 GitHub Release 下载 bundle 安装
+    let url = get_bundle_download_url();
+    info!("[安装OpenClaw] 本地 bundle 不存在，从远程下载: {}", url);
+    match download_and_install_bundle(&app, &url).await {
+        Ok(()) => {
+            info!("[安装OpenClaw] ✓ 下载安装成功");
             Ok(InstallResult {
                 success: true,
-                message: "OpenClaw 离线安装成功！".to_string(),
+                message: "OpenClaw 下载安装成功！".to_string(),
                 error: None,
             })
         }
-        Some(false) => {
-            error!("[安装OpenClaw] ✗ 离线 bundle 不完整");
+        Err(e) => {
+            error!("[安装OpenClaw] ✗ 下载安装失败: {}", e);
             Ok(InstallResult {
                 success: false,
-                message: "离线安装包不完整，请重新构建应用".to_string(),
-                error: Some("bundle payload incomplete".to_string()),
-            })
-        }
-        None => {
-            error!("[安装OpenClaw] ✗ 未找到离线 bundle");
-            Ok(InstallResult {
-                success: false,
-                message: "未找到离线安装包，请重新构建应用".to_string(),
-                error: Some("bundle not found".to_string()),
+                message: format!("安装失败: {}", e),
+                error: Some(e),
             })
         }
     }
