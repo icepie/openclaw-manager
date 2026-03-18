@@ -791,7 +791,16 @@ fn copy_bundled_node_to_prefix(bundle_dir: &PathBuf, prefix: &PathBuf) -> Result
     Ok(())
 }
 
-fn install_openclaw_from_bundle_dir(bundle_dir: &PathBuf, install_dir: Option<&Path>) -> Result<bool, String> {
+fn emit_progress(app: &tauri::AppHandle, step: &str, progress: u8, message: &str) {
+    let _ = app.emit("install-progress", InstallProgress {
+        step: step.to_string(),
+        progress,
+        message: message.to_string(),
+        error: None,
+    });
+}
+
+fn install_openclaw_from_bundle_dir(app: &tauri::AppHandle, bundle_dir: &PathBuf, install_dir: Option<&Path>) -> Result<bool, String> {
     if !bundle_payload_usable(bundle_dir) {
         info!("[离线安装] bundle payload 不完整，跳过离线安装");
         return Ok(false);
@@ -805,16 +814,19 @@ fn install_openclaw_from_bundle_dir(bundle_dir: &PathBuf, install_dir: Option<&P
             .map_err(|_| "无法获取用户主目录".to_string())?;
         PathBuf::from(home).join(".openclaw")
     };
+    emit_progress(app, "prepare", 5, "正在准备安装目录...");
     fs::create_dir_all(&prefix).map_err(|e| e.to_string())?;
 
     let prepared_prefix = bundle_dir.join("prefix");
     if prepared_prefix.exists() {
         info!("[离线安装] 从 bundled prefix snapshot 安装...");
+        emit_progress(app, "copy", 20, "正在复制文件...");
         copy_dir_recursive(&prepared_prefix, &prefix)?;
-        // 同时把 bundled node 复制到 prefix/node/，供 openclaw 运行时使用
+        emit_progress(app, "node", 80, "正在复制 Node.js 运行时...");
         copy_bundled_node_to_prefix(bundle_dir, &prefix)?;
         if prefix_has_openclaw_binary(&prefix) {
             info!("[离线安装] ✓ bundled prefix 安装完成");
+            emit_progress(app, "done", 100, "安装完成！");
             return Ok(true);
         }
         warn!("[离线安装] prefix 复制完成但未找到 openclaw binary，尝试 npm 离线安装");
@@ -834,6 +846,7 @@ fn install_openclaw_from_bundle_dir(bundle_dir: &PathBuf, install_dir: Option<&P
     }
 
     info!("[离线安装] 使用 bundled npm 离线安装 openclaw...");
+    emit_progress(app, "npm", 40, "正在执行 npm 安装（可能需要几分钟）...");
     let output = Command::new(&node_bin)
         .arg(&npm_cli)
         .arg("install")
@@ -849,9 +862,11 @@ fn install_openclaw_from_bundle_dir(bundle_dir: &PathBuf, install_dir: Option<&P
         .map_err(|e| format!("运行 bundled npm 失败: {}", e))?;
 
     if output.status.success() {
+        emit_progress(app, "node", 85, "正在复制 Node.js 运行时...");
         copy_bundled_node_to_prefix(bundle_dir, &prefix)?;
         if prefix_has_openclaw_binary(&prefix) {
             info!("[离线安装] ✓ npm 离线安装完成");
+            emit_progress(app, "done", 100, "安装完成！");
             return Ok(true);
         }
         return Err("npm 离线安装成功但未找到 openclaw binary".to_string());
@@ -865,7 +880,7 @@ fn install_openclaw_from_bundle_dir(bundle_dir: &PathBuf, install_dir: Option<&P
 fn try_install_openclaw_offline(app: &tauri::AppHandle, install_dir: Option<&Path>) -> Option<bool> {
     let bundle_dir = resolve_bundled_openclaw_dir(app)?;
     info!("[离线安装] 找到 bundle: {}", bundle_dir.display());
-    match install_openclaw_from_bundle_dir(&bundle_dir, install_dir) {
+    match install_openclaw_from_bundle_dir(app, &bundle_dir, install_dir) {
         Ok(result) => Some(result),
         Err(e) => {
             warn!("[离线安装] 失败: {}", e);
@@ -1046,6 +1061,7 @@ async fn download_and_install_bundle(app: &tauri::AppHandle, url: &str, install_
     download_file(app, url, &archive).await?;
 
     info!("[下载安装] 解压 bundle...");
+    emit_progress(app, "extract", 55, "正在解压 bundle...");
     if extract_dir.exists() {
         fs::remove_dir_all(&extract_dir).map_err(|e| e.to_string())?;
     }
@@ -1063,7 +1079,7 @@ async fn download_and_install_bundle(app: &tauri::AppHandle, url: &str, install_
     };
 
     info!("[下载安装] 从下载的 bundle 安装...");
-    match install_openclaw_from_bundle_dir(&bundle_dir, install_dir) {
+    match install_openclaw_from_bundle_dir(app, &bundle_dir, install_dir) {
         Ok(true) => {
             let _ = fs::remove_file(&archive);
             let _ = fs::remove_dir_all(&extract_dir);
@@ -1097,6 +1113,7 @@ pub async fn install_openclaw(app: tauri::AppHandle, bundle_url: Option<String>,
         if extract_dir.exists() {
             fs::remove_dir_all(&extract_dir).map_err(|e| e.to_string())?;
         }
+        emit_progress(&app, "extract", 10, "正在解压离线包...");
         if local_path.ends_with(".zip") {
             extract_zip(&archive, &extract_dir)?;
         } else {
@@ -1107,7 +1124,7 @@ pub async fn install_openclaw(app: tauri::AppHandle, bundle_url: Option<String>,
         } else {
             extract_dir.clone()
         };
-        return match install_openclaw_from_bundle_dir(&bundle_dir, dir_ref) {
+        return match install_openclaw_from_bundle_dir(&app, &bundle_dir, dir_ref) {
             Ok(true) => {
                 let _ = fs::remove_dir_all(&extract_dir);
                 Ok(InstallResult { success: true, message: "OpenClaw 本地离线包安装成功！".to_string(), error: None })

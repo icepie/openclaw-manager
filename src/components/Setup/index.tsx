@@ -36,6 +36,13 @@ interface InstallResult {
   error: string | null;
 }
 
+interface InstallProgress {
+  step: string;
+  progress: number;
+  message: string;
+  error: string | null;
+}
+
 interface DownloadProgress {
   downloaded: number;
   total: number | null;
@@ -57,6 +64,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
   const [editingUrl, setEditingUrl] = useState(false);
   const [editUrl, setEditUrl] = useState('');
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
+  const [installProgress, setInstallProgress] = useState<InstallProgress | null>(null);
   const [installDir, setInstallDir] = useState<string | null>(null);
   const [localBundlePath, setLocalBundlePath] = useState<string | null>(null);
   const [installStatus, setInstallStatus] = useState('');
@@ -91,11 +99,17 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
     setInstalling(true);
     setError(null);
     setProgress(null);
+    setInstallProgress(null);
     setInstallStatus('正在准备安装...');
 
-    const unlisten = await listen<DownloadProgress>('bundle-download-progress', (e) => {
+    const unlistenDownload = await listen<DownloadProgress>('bundle-download-progress', (e) => {
       setProgress(e.payload);
       setInstallStatus('正在下载 bundle...');
+    });
+
+    const unlistenInstall = await listen<InstallProgress>('install-progress', (e) => {
+      setInstallProgress(e.payload);
+      setInstallStatus(e.payload.message);
     });
 
     try {
@@ -116,9 +130,11 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
     } catch (e) {
       setError(`安装失败: ${e}`);
     } finally {
-      unlisten();
+      unlistenDownload();
+      unlistenInstall();
       setInstalling(false);
       setProgress(null);
+      setInstallProgress(null);
       setInstallStatus('');
     }
   };
@@ -210,8 +226,30 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
             </div>
 
             {/* 安装状态文字 */}
-            {installing && installStatus && !progress && (
+            {installing && installStatus && !progress && !installProgress && (
               <p className="text-xs text-gray-500 dark:text-gray-400 text-center">{installStatus}</p>
+            )}
+
+            {/* 安装进度（各阶段） */}
+            {installing && installProgress && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                className="space-y-1.5"
+              >
+                <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                  <span>{installProgress.message}</span>
+                  <span>{installProgress.progress}%</span>
+                </div>
+                <div className="w-full h-1.5 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full bg-claw-500 rounded-full"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${installProgress.progress}%` }}
+                    transition={{ ease: 'linear', duration: 0.3 }}
+                  />
+                </div>
+              </motion.div>
             )}
 
             {/* 下载进度 */}
