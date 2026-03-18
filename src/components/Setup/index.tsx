@@ -58,6 +58,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
   const [editUrl, setEditUrl] = useState('');
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
   const [installDir, setInstallDir] = useState<string | null>(null);
+  const [localBundlePath, setLocalBundlePath] = useState<string | null>(null);
   const [installStatus, setInstallStatus] = useState('');
 
   const checkEnvironment = async () => {
@@ -100,7 +101,8 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
     try {
       setInstallStatus('正在检查本地 bundle...');
       const result = await invoke<InstallResult>('install_openclaw', {
-        bundleUrl: bundleUrl || null,
+        bundleUrl: localBundlePath ? null : (bundleUrl || null),
+        localBundlePath: localBundlePath || null,
         installDir: installDir || null,
       });
 
@@ -124,6 +126,15 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
   const handlePickDir = async () => {
     const selected = await open({ directory: true, multiple: false, title: '选择安装目录' });
     if (typeof selected === 'string') setInstallDir(selected);
+  };
+
+  const handlePickLocalBundle = async () => {
+    const selected = await open({
+      multiple: false,
+      title: '选择本地离线包',
+      filters: [{ name: 'Bundle', extensions: ['tar.gz', 'tgz', 'zip', 'gz'] }],
+    });
+    if (typeof selected === 'string') setLocalBundlePath(selected);
   };
 
   const startEditUrl = () => {
@@ -225,34 +236,59 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
               </motion.div>
             )}
 
-            {/* Bundle URL */}
-            <div className="pt-1">
-              <p className="text-xs text-gray-400 dark:text-gray-500 mb-1.5">Bundle 下载地址</p>
-              {editingUrl ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    className="input-base flex-1 text-xs py-1.5"
-                    value={editUrl}
-                    onChange={(e) => setEditUrl(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && confirmEditUrl()}
-                    autoFocus
-                  />
-                  <button onClick={confirmEditUrl} className="icon-btn text-green-500">
-                    <Check className="w-4 h-4" />
+            {/* Bundle URL / 本地离线包 */}
+            <div className="pt-1 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-gray-400 dark:text-gray-500">Bundle 来源</p>
+                {localBundlePath && (
+                  <button onClick={() => setLocalBundlePath(null)} disabled={installing}
+                    className="text-xs text-gray-400 hover:text-red-400 transition-colors flex items-center gap-1">
+                    <X className="w-3 h-3" />使用远程 URL
                   </button>
-                  <button onClick={() => setEditingUrl(false)} className="icon-btn">
-                    <X className="w-4 h-4" />
+                )}
+              </div>
+
+              {localBundlePath ? (
+                <div className="flex items-center gap-2">
+                  <p className="flex-1 text-xs text-green-600 dark:text-green-400 truncate font-mono bg-green-500/10 border border-green-500/20 rounded-lg px-2.5 py-1.5">
+                    {localBundlePath}
+                  </p>
+                  <button onClick={handlePickLocalBundle} disabled={installing} className="icon-btn" title="重新选择">
+                    <FolderOpen className="w-4 h-4" />
                   </button>
                 </div>
               ) : (
-                <div className="flex items-center gap-2 group">
-                  <p className="flex-1 text-xs text-gray-500 dark:text-gray-400 truncate font-mono bg-gray-100 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.06] rounded-lg px-2.5 py-1.5">
-                    {bundleUrl}
-                  </p>
-                  <button onClick={startEditUrl} className="icon-btn opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                <>
+                  {editingUrl ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        className="input-base flex-1 text-xs py-1.5"
+                        value={editUrl}
+                        onChange={(e) => setEditUrl(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && confirmEditUrl()}
+                        autoFocus
+                      />
+                      <button onClick={confirmEditUrl} className="icon-btn text-green-500">
+                        <Check className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => setEditingUrl(false)} className="icon-btn">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 group">
+                      <p className="flex-1 text-xs text-gray-500 dark:text-gray-400 truncate font-mono bg-gray-100 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.06] rounded-lg px-2.5 py-1.5">
+                        {bundleUrl}
+                      </p>
+                      <button onClick={startEditUrl} disabled={installing} className="icon-btn opacity-0 group-hover:opacity-100 transition-opacity" title="编辑 URL">
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={handlePickLocalBundle} disabled={installing} className="icon-btn opacity-0 group-hover:opacity-100 transition-opacity" title="选择本地文件">
+                        <FolderOpen className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 

@@ -1074,13 +1074,47 @@ async fn download_and_install_bundle(app: &tauri::AppHandle, url: &str, install_
 // ── 安装 OpenClaw ─────────────────────────────────────────────────────────────
 
 #[command]
-pub async fn install_openclaw(app: tauri::AppHandle, bundle_url: Option<String>, install_dir: Option<String>) -> Result<InstallResult, String> {
+pub async fn install_openclaw(app: tauri::AppHandle, bundle_url: Option<String>, local_bundle_path: Option<String>, install_dir: Option<String>) -> Result<InstallResult, String> {
     info!("[安装OpenClaw] 开始安装 OpenClaw...");
 
     let dir: Option<PathBuf> = install_dir.map(PathBuf::from);
     let dir_ref: Option<&Path> = dir.as_deref();
 
-    // 1. 优先本地 bundle（打包进 app 的）
+    // 1. 用户指定本地离线包
+    if let Some(ref local_path) = local_bundle_path {
+        info!("[安装OpenClaw] 使用本地离线包: {}", local_path);
+        let archive = PathBuf::from(local_path);
+        let cache_dir = {
+            let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"))
+                .map_err(|_| "无法获取用户主目录".to_string())?;
+            PathBuf::from(home).join(".openclaw").join("bundle-cache")
+        };
+        fs::create_dir_all(&cache_dir).map_err(|e| e.to_string())?;
+        let extract_dir = cache_dir.join("extract");
+        if extract_dir.exists() {
+            fs::remove_dir_all(&extract_dir).map_err(|e| e.to_string())?;
+        }
+        if local_path.ends_with(".zip") {
+            extract_zip(&archive, &extract_dir)?;
+        } else {
+            extract_tar_gz(&archive, &extract_dir)?;
+        }
+        let bundle_dir = if extract_dir.join("openclaw-bundle").exists() {
+            extract_dir.join("openclaw-bundle")
+        } else {
+            extract_dir.clone()
+        };
+        return match install_openclaw_from_bundle_dir(&bundle_dir, dir_ref) {
+            Ok(true) => {
+                let _ = fs::remove_dir_all(&extract_dir);
+                Ok(InstallResult { success: true, message: "OpenClaw 本地离线包安装成功！".to_string(), error: None })
+            }
+            Ok(false) => Ok(InstallResult { success: false, message: "本地离线包安装失败：payload 不完整".to_string(), error: Some("payload 不完整".to_string()) }),
+            Err(e) => Ok(InstallResult { success: false, message: format!("本地离线包安装失败: {}", e), error: Some(e) }),
+        };
+    }
+
+    // 2. 优先 app 内嵌 bundle
     if let Some(true) = try_install_openclaw_offline(&app, dir_ref) {
         info!("[安装OpenClaw] ✓ 本地 bundle 安装成功");
         return Ok(InstallResult {
@@ -1090,7 +1124,7 @@ pub async fn install_openclaw(app: tauri::AppHandle, bundle_url: Option<String>,
         });
     }
 
-    // 2. 本地没有，从指定 URL（或默认）下载 bundle 安装
+    // 3. 从指定 URL（或默认）下载 bundle 安装
     let url = bundle_url.unwrap_or_else(get_bundle_download_url);
     info!("[安装OpenClaw] 从远程下载: {}", url);
     match download_and_install_bundle(&app, &url, dir_ref).await {
