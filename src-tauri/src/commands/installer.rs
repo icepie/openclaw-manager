@@ -1,7 +1,10 @@
 use crate::utils::{platform, shell};
 use serde::{Deserialize, Serialize};
-use tauri::command;
+use tauri::{command, Manager};
 use log::{info, warn, error, debug};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 /// 环境检查结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -681,117 +684,194 @@ fi
     }
 }
 
-/// 安装 OpenClaw
-#[command]
-pub async fn install_openclaw() -> Result<InstallResult, String> {
-    info!("[安装OpenClaw] 开始安装 OpenClaw...");
-    let os = platform::get_os();
-    info!("[安装OpenClaw] 检测到操作系统: {}", os);
-    
-    let result = match os.as_str() {
-        "windows" => {
-            info!("[安装OpenClaw] 使用 Windows 安装方式...");
-            install_openclaw_windows().await
-        },
-        _ => {
-            info!("[安装OpenClaw] 使用 Unix 安装方式 (npm)...");
-            install_openclaw_unix().await
-        },
-    };
-    
-    match &result {
-        Ok(r) if r.success => info!("[安装OpenClaw] ✓ 安装成功"),
-        Ok(r) => warn!("[安装OpenClaw] ✗ 安装失败: {}", r.message),
-        Err(e) => error!("[安装OpenClaw] ✗ 安装错误: {}", e),
+// ── 离线 bundle 安装 ──────────────────────────────────────────────────────────
+
+fn resolve_bundled_openclaw_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    let resolver = app.path();
+    if let Ok(path) = resolver.resolve("openclaw-bundle", tauri::path::BaseDirectory::Resource) {
+        candidates.push(path);
     }
-    
-    result
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join("src-tauri").join("bundle").join("resources").join("openclaw-bundle"));
+        candidates.push(cwd.join("bundle").join("resources").join("openclaw-bundle"));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            candidates.push(exe_dir.join("bundle").join("resources").join("openclaw-bundle"));
+            candidates.push(exe_dir.join("resources").join("openclaw-bundle"));
+            candidates.push(exe_dir.join("..").join("..").join("Resources").join("openclaw-bundle"));
+        }
+    }
+    for candidate in candidates {
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    None
 }
 
-/// Windows 安装 OpenClaw
-async fn install_openclaw_windows() -> Result<InstallResult, String> {
-    let script = r#"
-$ErrorActionPreference = 'Stop'
-
-# 检查 Node.js
-$nodeVersion = node --version 2>$null
-if (-not $nodeVersion) {
-    Write-Host "错误：请先安装 Node.js"
-    exit 1
+fn bundle_payload_usable(bundle_dir: &PathBuf) -> bool {
+    let manifest = bundle_dir.join("manifest.json");
+    if !manifest.exists() {
+        return false;
+    }
+    let prefix = bundle_dir.join("prefix");
+    if prefix.exists() {
+        return true;
+    }
+    let npm_cli = bundle_dir.join("npm").join("bin").join("npm-cli.js");
+    let tgz = bundle_dir.join("openclaw.tgz");
+    let cache = bundle_dir.join("npm-cache");
+    npm_cli.exists() && tgz.exists() && cache.exists()
 }
 
-# 优先使用国内镜像
-Write-Host "使用 npm 安装 OpenClaw（国内镜像）..."
-npm install -g openclaw@latest --registry https://registry.npmmirror.com --unsafe-perm
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "国内镜像失败，尝试官方源..."
-    npm install -g openclaw@latest --unsafe-perm
+fn resolve_bundled_node_binary(bundle_dir: &PathBuf) -> Option<PathBuf> {
+    let node_bin = if cfg!(target_os = "windows") {
+        bundle_dir.join("node").join("node.exe")
+    } else {
+        bundle_dir.join("node").join("node")
+    };
+    if node_bin.exists() { Some(node_bin) } else { None }
 }
 
-# 验证安装
-$openclawVersion = openclaw --version 2>$null
-if ($openclawVersion) {
-    Write-Host "OpenClaw 安装成功: $openclawVersion"
-    exit 0
-} else {
-    Write-Host "OpenClaw 安装失败"
-    exit 1
+fn prefix_has_openclaw_binary(prefix: &PathBuf) -> bool {
+    let candidates: &[&str] = if cfg!(target_os = "windows") {
+        &["bin/openclaw.cmd", "bin/openclaw.exe"]
+    } else {
+        &["bin/openclaw"]
+    };
+    candidates.iter().any(|rel| prefix.join(rel).exists())
 }
-"#;
-    
-    match shell::run_powershell_output(script) {
-        Ok(output) => {
-            if get_openclaw_version().is_some() {
-                Ok(InstallResult {
-                    success: true,
-                    message: "OpenClaw 安装成功！".to_string(),
-                    error: None,
-                })
-            } else {
-                Ok(InstallResult {
-                    success: false,
-                    message: "安装后需要重启应用".to_string(),
-                    error: Some(output),
-                })
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
+    fs::create_dir_all(dst).map_err(|e| e.to_string())?;
+    for entry in fs::read_dir(src).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path).map_err(|e| e.to_string())?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if let Ok(meta) = fs::metadata(&src_path) {
+                    let _ = fs::set_permissions(&dst_path, meta.permissions());
+                }
             }
         }
-        Err(e) => Ok(InstallResult {
-            success: false,
-            message: "OpenClaw 安装失败".to_string(),
-            error: Some(e),
-        }),
+    }
+    Ok(())
+}
+
+fn install_openclaw_from_bundle_dir(bundle_dir: &PathBuf) -> Result<bool, String> {
+    if !bundle_payload_usable(bundle_dir) {
+        info!("[离线安装] bundle payload 不完整，跳过离线安装");
+        return Ok(false);
+    }
+
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map_err(|_| "无法获取用户主目录".to_string())?;
+    let prefix = PathBuf::from(home).join(".openclaw");
+    fs::create_dir_all(&prefix).map_err(|e| e.to_string())?;
+
+    let prepared_prefix = bundle_dir.join("prefix");
+    if prepared_prefix.exists() {
+        info!("[离线安装] 从 bundled prefix snapshot 安装...");
+        copy_dir_recursive(&prepared_prefix, &prefix)?;
+        if prefix_has_openclaw_binary(&prefix) {
+            info!("[离线安装] ✓ bundled prefix 安装完成");
+            return Ok(true);
+        }
+        warn!("[离线安装] prefix 复制完成但未找到 openclaw binary，尝试 npm 离线安装");
+    }
+
+    let Some(node_bin) = resolve_bundled_node_binary(bundle_dir) else {
+        info!("[离线安装] 未找到 bundled node，跳过离线安装");
+        return Ok(false);
+    };
+    let npm_cli = bundle_dir.join("npm").join("bin").join("npm-cli.js");
+    let openclaw_tgz = bundle_dir.join("openclaw.tgz");
+    let npm_cache = bundle_dir.join("npm-cache");
+
+    if !npm_cli.exists() || !openclaw_tgz.exists() || !npm_cache.exists() {
+        info!("[离线安装] bundle payload 不完整，跳过离线安装");
+        return Ok(false);
+    }
+
+    info!("[离线安装] 使用 bundled npm 离线安装 openclaw...");
+    let output = Command::new(&node_bin)
+        .arg(&npm_cli)
+        .arg("install")
+        .arg("--prefix").arg(&prefix)
+        .arg(&openclaw_tgz)
+        .arg("--cache").arg(&npm_cache)
+        .arg("--offline")
+        .arg("--no-audit")
+        .arg("--no-fund")
+        .arg("--loglevel=error")
+        .output()
+        .map_err(|e| format!("运行 bundled npm 失败: {}", e))?;
+
+    if output.status.success() {
+        if prefix_has_openclaw_binary(&prefix) {
+            info!("[离线安装] ✓ npm 离线安装完成");
+            return Ok(true);
+        }
+        return Err("npm 离线安装成功但未找到 openclaw binary".to_string());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Err(format!("npm 离线安装失败: {} {}", stdout.trim(), stderr.trim()))
+}
+
+fn try_install_openclaw_offline(app: &tauri::AppHandle) -> Option<bool> {
+    let bundle_dir = resolve_bundled_openclaw_dir(app)?;
+    info!("[离线安装] 找到 bundle: {}", bundle_dir.display());
+    match install_openclaw_from_bundle_dir(&bundle_dir) {
+        Ok(result) => Some(result),
+        Err(e) => {
+            warn!("[离线安装] 失败: {}", e);
+            None
+        }
     }
 }
 
-/// Unix 系统安装 OpenClaw
-async fn install_openclaw_unix() -> Result<InstallResult, String> {
-    let script = r#"
-# 检查 Node.js
-if ! command -v node &> /dev/null; then
-    echo "错误：请先安装 Node.js"
-    exit 1
-fi
+// ── 安装 OpenClaw ─────────────────────────────────────────────────────────────
 
-# 优先使用国内镜像
-echo "使用 npm 安装 OpenClaw（国内镜像）..."
-npm install -g openclaw@latest --registry https://registry.npmmirror.com --unsafe-perm || \
-npm install -g openclaw@latest --unsafe-perm
+#[command]
+pub async fn install_openclaw(app: tauri::AppHandle) -> Result<InstallResult, String> {
+    info!("[安装OpenClaw] 开始安装 OpenClaw...");
 
-# 验证安装
-openclaw --version
-"#;
-    
-    match shell::run_bash_output(script) {
-        Ok(output) => Ok(InstallResult {
-            success: true,
-            message: format!("OpenClaw 安装成功！{}", output),
-            error: None,
-        }),
-        Err(e) => Ok(InstallResult {
-            success: false,
-            message: "OpenClaw 安装失败".to_string(),
-            error: Some(e),
-        }),
+    match try_install_openclaw_offline(&app) {
+        Some(true) => {
+            info!("[安装OpenClaw] ✓ 离线安装成功");
+            Ok(InstallResult {
+                success: true,
+                message: "OpenClaw 离线安装成功！".to_string(),
+                error: None,
+            })
+        }
+        Some(false) => {
+            error!("[安装OpenClaw] ✗ 离线 bundle 不完整");
+            Ok(InstallResult {
+                success: false,
+                message: "离线安装包不完整，请重新构建应用".to_string(),
+                error: Some("bundle payload incomplete".to_string()),
+            })
+        }
+        None => {
+            error!("[安装OpenClaw] ✗ 未找到离线 bundle");
+            Ok(InstallResult {
+                success: false,
+                message: "未找到离线安装包，请重新构建应用".to_string(),
+                error: Some("bundle not found".to_string()),
+            })
+        }
     }
 }
 

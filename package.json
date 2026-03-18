@@ -12,9 +12,10 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "prepare:openclaw-bundle": "node scripts/prepare-openclaw-bundle.mjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "npm run prepare:openclaw-bundle && tauri build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.2.0",

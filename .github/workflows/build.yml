@@ -7,11 +7,10 @@ on:
   pull_request:
     branches: [main]
 
-# 取消同一分支上的旧构建
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-  
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -21,21 +20,23 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macOS - Universal (Intel + Apple Silicon)
           - platform: macos-latest
             target: universal-apple-darwin
             rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
             label: macOS
-          # Windows
+            # macOS Universal 需要同时打包 x64 和 arm64 的 node runtime
+            # 构建时先用 arm64 bundle（Apple Silicon runner），x64 bundle 单独准备
+            node_arch: arm64
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             rust_targets: x86_64-pc-windows-msvc
             label: Windows
-          # Linux
+            node_arch: x64
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             rust_targets: x86_64-unknown-linux-gnu
             label: Linux
+            node_arch: x64
 
     runs-on: ${{ matrix.platform }}
     name: Build (${{ matrix.label }})
@@ -84,6 +85,14 @@ jobs:
 
       - name: Install frontend dependencies
         run: pnpm install
+
+      # ── 准备离线 bundle ───────────────────────────────────
+      - name: Prepare openclaw offline bundle
+        env:
+          OPENCLAW_BUNDLE_NODE_ARCH: ${{ matrix.node_arch }}
+          # 跳过 cross-arch 二进制的运行验证
+          OPENCLAW_BUNDLE_SKIP_VERIFY: ${{ matrix.node_arch != 'x64' && runner.arch == 'X64' && '1' || matrix.node_arch != 'arm64' && runner.arch == 'ARM64' && '1' || '0' }}
+        run: node scripts/prepare-openclaw-bundle.mjs
 
       # ── 构建 ─────────────────────────────────────────────
       - name: Build Tauri app (macOS Universal)
