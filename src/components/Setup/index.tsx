@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { open } from '@tauri-apps/plugin-dialog';
 import {
   CheckCircle2,
   Loader2,
@@ -12,6 +13,7 @@ import {
   Pencil,
   X,
   Check,
+  FolderOpen,
 } from 'lucide-react';
 import { setupLogger } from '../../lib/logger';
 
@@ -55,6 +57,8 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
   const [editingUrl, setEditingUrl] = useState(false);
   const [editUrl, setEditUrl] = useState('');
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
+  const [installDir, setInstallDir] = useState<string | null>(null);
+  const [installStatus, setInstallStatus] = useState('');
 
   const checkEnvironment = async () => {
     setupLogger.info('检查系统环境...');
@@ -86,17 +90,22 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
     setInstalling(true);
     setError(null);
     setProgress(null);
+    setInstallStatus('正在准备安装...');
 
     const unlisten = await listen<DownloadProgress>('bundle-download-progress', (e) => {
       setProgress(e.payload);
+      setInstallStatus('正在下载 bundle...');
     });
 
     try {
+      setInstallStatus('正在检查本地 bundle...');
       const result = await invoke<InstallResult>('install_openclaw', {
         bundleUrl: bundleUrl || null,
+        installDir: installDir || null,
       });
 
       if (result.success) {
+        setInstallStatus('正在初始化配置...');
         await invoke<InstallResult>('init_openclaw_config');
         await checkEnvironment();
       } else {
@@ -108,7 +117,13 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
       unlisten();
       setInstalling(false);
       setProgress(null);
+      setInstallStatus('');
     }
+  };
+
+  const handlePickDir = async () => {
+    const selected = await open({ directory: true, multiple: false, title: '选择安装目录' });
+    if (typeof selected === 'string') setInstallDir(selected);
   };
 
   const startEditUrl = () => {
@@ -172,7 +187,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
                 {installing ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    {progress ? '下载中...' : '安装中...'}
+                    {installStatus || '安装中...'}
                   </>
                 ) : (
                   <>
@@ -182,6 +197,11 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
                 )}
               </button>
             </div>
+
+            {/* 安装状态文字 */}
+            {installing && installStatus && !progress && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 text-center">{installStatus}</p>
+            )}
 
             {/* 下载进度 */}
             {installing && progress && (
@@ -234,6 +254,24 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
                   </button>
                 </div>
               )}
+            </div>
+
+            {/* 安装目录 */}
+            <div className="pt-1">
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-1.5">安装目录（留空使用默认 ~/.openclaw）</p>
+              <div className="flex items-center gap-2">
+                <p className="flex-1 text-xs text-gray-500 dark:text-gray-400 truncate font-mono bg-gray-100 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.06] rounded-lg px-2.5 py-1.5">
+                  {installDir || '~/.openclaw（默认）'}
+                </p>
+                <button onClick={handlePickDir} disabled={installing} className="icon-btn" title="选择目录">
+                  <FolderOpen className="w-4 h-4" />
+                </button>
+                {installDir && (
+                  <button onClick={() => setInstallDir(null)} disabled={installing} className="icon-btn">
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* 错误信息 */}
