@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { invoke } from '@tauri-apps/api/core';
-import { Sidebar } from './components/Layout/Sidebar';
+import { invoke } from '@tauri-apps/api/core';import { Sidebar } from './components/Layout/Sidebar';
 import { Header } from './components/Layout/Header';
 import { Dashboard } from './components/Dashboard';
 import { AIConfig } from './components/AIConfig';
@@ -165,12 +164,6 @@ function App() {
   };
 
   const renderPage = () => {
-    const pageVariants = {
-      initial: { opacity: 0, x: 20 },
-      animate: { opacity: 1, x: 0 },
-      exit: { opacity: 0, x: -20 },
-    };
-
     const pages: Record<PageType, JSX.Element> = {
       dashboard: <Dashboard envStatus={envStatus} onSetupComplete={handleSetupComplete} />,
       ai: <AIConfig />,
@@ -181,19 +174,18 @@ function App() {
     };
 
     return (
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={currentPage}
-          variants={pageVariants}
-          initial="initial"
-          animate="animate"
-          exit="exit"
-          transition={{ duration: 0.2 }}
-          className="h-full"
-        >
-          {pages[currentPage]}
-        </motion.div>
-      </AnimatePresence>
+      <div className="h-full relative">
+        {(Object.keys(pages) as PageType[]).map((page) => (
+          <div
+            key={page}
+            className={`h-full absolute inset-0 transition-opacity duration-150 ${
+              page === currentPage ? 'opacity-100 pointer-events-auto z-10' : 'opacity-0 pointer-events-none z-0'
+            }`}
+          >
+            {pages[page]}
+          </div>
+        ))}
+      </div>
     );
   };
 
