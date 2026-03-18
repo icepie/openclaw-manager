@@ -855,9 +855,10 @@ pub fn get_bundle_download_url() -> String {
         "aarch64" => "arm64",
         _ => "x64",
     };
+    let ext = if cfg!(target_os = "windows") { "zip" } else { "tar.gz" };
     format!(
-        "https://github.com/icepie/openclaw-manager/releases/latest/download/openclaw-bundle-{}-{}.tar.gz",
-        os, arch
+        "https://github.com/icepie/openclaw-manager/releases/latest/download/openclaw-bundle-{}-{}.{}",
+        os, arch, ext
     )
 }
 
@@ -977,6 +978,25 @@ fn extract_tar_gz(archive: &PathBuf, dest: &PathBuf) -> Result<(), String> {
     Err(format!("tar 解压失败: {}", String::from_utf8_lossy(&o2.stderr).trim()))
 }
 
+fn extract_zip(archive: &PathBuf, dest: &PathBuf) -> Result<(), String> {
+    fs::create_dir_all(dest).map_err(|e| e.to_string())?;
+    // Windows 内置 Expand-Archive (PowerShell)
+    let o = Command::new("powershell")
+        .args([
+            "-NoProfile", "-NonInteractive", "-Command",
+            &format!(
+                "Expand-Archive -Force -Path '{}' -DestinationPath '{}'",
+                archive.display(), dest.display()
+            ),
+        ])
+        .output()
+        .map_err(|e| format!("zip 解压失败: {}", e))?;
+    if o.status.success() {
+        return Ok(());
+    }
+    Err(format!("zip 解压失败: {}", String::from_utf8_lossy(&o.stderr).trim()))
+}
+
 async fn download_and_install_bundle(app: &tauri::AppHandle, url: &str) -> Result<(), String> {
     let cache_dir = {
         let home = std::env::var("HOME")
@@ -986,7 +1006,9 @@ async fn download_and_install_bundle(app: &tauri::AppHandle, url: &str) -> Resul
     };
     fs::create_dir_all(&cache_dir).map_err(|e| e.to_string())?;
 
-    let archive = cache_dir.join("openclaw-bundle.tar.gz");
+    let is_zip = url.ends_with(".zip");
+    let archive_name = if is_zip { "openclaw-bundle.zip" } else { "openclaw-bundle.tar.gz" };
+    let archive = cache_dir.join(archive_name);
     let extract_dir = cache_dir.join("extract");
 
     info!("[下载安装] 下载 bundle: {}", url);
@@ -996,7 +1018,11 @@ async fn download_and_install_bundle(app: &tauri::AppHandle, url: &str) -> Resul
     if extract_dir.exists() {
         fs::remove_dir_all(&extract_dir).map_err(|e| e.to_string())?;
     }
-    extract_tar_gz(&archive, &extract_dir)?;
+    if is_zip {
+        extract_zip(&archive, &extract_dir)?;
+    } else {
+        extract_tar_gz(&archive, &extract_dir)?;
+    }
 
     // 找到解压后的 openclaw-bundle 目录
     let bundle_dir = if extract_dir.join("openclaw-bundle").exists() {

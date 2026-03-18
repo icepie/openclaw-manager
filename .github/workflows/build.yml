@@ -69,23 +69,22 @@ jobs:
           tar -czf openclaw-bundle-${{ matrix.os }}-${{ matrix.arch }}.tar.gz openclaw-bundle/
           mv openclaw-bundle-${{ matrix.os }}-${{ matrix.arch }}.tar.gz ../../../
 
-      - name: Pack bundle as tar.gz (Windows)
+      - name: Pack bundle as zip (Windows)
         if: matrix.os == 'windows'
         shell: pwsh
         run: |
           $bundlePath = "src-tauri/bundle/resources/openclaw-bundle"
           if (-not (Test-Path $bundlePath)) { throw "Bundle directory not found: $bundlePath" }
-          Set-Location src-tauri/bundle/resources
-          tar --dereference -czf openclaw-bundle-${{ matrix.os }}-${{ matrix.arch }}.tar.gz `
-            --exclude='openclaw-bundle/npm-cache' `
-            openclaw-bundle/
-          Move-Item openclaw-bundle-${{ matrix.os }}-${{ matrix.arch }}.tar.gz ../../../
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "$bundlePath/npm-cache"
+          Compress-Archive -Path "$bundlePath" -DestinationPath "openclaw-bundle-${{ matrix.os }}-${{ matrix.arch }}.zip"
 
       - name: Upload bundle artifact
         uses: actions/upload-artifact@v4
         with:
           name: bundle-${{ matrix.label }}
-          path: openclaw-bundle-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+          path: |
+            openclaw-bundle-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+            openclaw-bundle-${{ matrix.os }}-${{ matrix.arch }}.zip
           if-no-files-found: error
 
   # ── 构建 App（不内嵌 bundle）────────────────────────────────────────────────
@@ -240,6 +239,7 @@ jobs:
             artifacts/**/*.deb
             artifacts/**/*.AppImage
             artifacts/**/openclaw-bundle-*.tar.gz
+            artifacts/**/openclaw-bundle-*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -275,5 +275,6 @@ jobs:
             artifacts/**/*.deb
             artifacts/**/*.AppImage
             artifacts/**/openclaw-bundle-*.tar.gz
+            artifacts/**/openclaw-bundle-*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
