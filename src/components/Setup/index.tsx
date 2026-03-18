@@ -7,10 +7,7 @@ import {
   Download,
   ArrowRight,
   RefreshCw,
-  ExternalLink,
-  Cpu,
   Package,
-  GitBranch
 } from 'lucide-react';
 import { setupLogger } from '../../lib/logger';
 
@@ -35,14 +32,13 @@ interface InstallResult {
 
 interface SetupProps {
   onComplete: () => void;
-  /** 是否嵌入模式（嵌入到 Dashboard 中显示） */
   embedded?: boolean;
 }
 
 export function Setup({ onComplete, embedded = false }: SetupProps) {
   const [envStatus, setEnvStatus] = useState<EnvironmentStatus | null>(null);
   const [checking, setChecking] = useState(true);
-  const [installing, setInstalling] = useState<'git' | 'nodejs' | 'openclaw' | null>(null);
+  const [installing, setInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<'check' | 'install' | 'complete'>('check');
 
@@ -55,13 +51,12 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
       setupLogger.state('环境状态', status);
       setEnvStatus(status);
 
-      if (status.ready) {
+      if (status.openclaw_installed) {
         setupLogger.info('✅ 环境就绪');
         setStep('complete');
-        // 延迟一下再跳转，让用户看到成功状态
         setTimeout(() => onComplete(), 1500);
       } else {
-        setupLogger.warn('环境未就绪，需要安装依赖');
+        setupLogger.warn('OpenClaw 未安装');
         setStep('install');
       }
     } catch (e) {
@@ -77,66 +72,9 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
     checkEnvironment();
   }, []);
 
-  const handleInstallGit = async () => {
-    setupLogger.action('安装 Git');
-    setInstalling('git');
-    setError(null);
-    try {
-      const result = await invoke<InstallResult>('install_git');
-      if (result.success) {
-        setupLogger.info('✅ Git 安装成功');
-        await checkEnvironment();
-      } else if (result.message.includes('重启')) {
-        setError('Git 安装完成，请重启应用以使环境变量生效');
-      } else {
-        setError(result.error || 'Git 安装失败，请手动安装: https://git-scm.com');
-      }
-    } catch (e) {
-      setError(`Git 安装失败: ${e}`);
-    } finally {
-      setInstalling(null);
-    }
-  };
-
-  const handleInstallNodejs = async () => {
-    setupLogger.action('安装 Node.js');
-    setupLogger.info('开始安装 Node.js...');
-    setInstalling('nodejs');
-    setError(null);
-
-    try {
-      // 先尝试直接安装
-      const result = await invoke<InstallResult>('install_nodejs');
-
-      if (result.success) {
-        setupLogger.info('✅ Node.js 安装成功');
-        // 重新检查环境
-        await checkEnvironment();
-      } else if (result.message.includes('重启')) {
-        // 需要重启应用
-        setError('Node.js 安装完成，请重启应用以使环境变量生效');
-      } else {
-        // 打开终端手动安装
-        await invoke<string>('open_install_terminal', { installType: 'nodejs' });
-        setError('已打开安装终端，请在终端中完成安装后点击"重新检查"');
-      }
-    } catch (e) {
-      // 如果自动安装失败，打开终端
-      try {
-        await invoke<string>('open_install_terminal', { installType: 'nodejs' });
-        setError('已打开安装终端，请在终端中完成安装后点击"重新检查"');
-      } catch (termErr) {
-        setError(`安装失败: ${e}。${termErr}`);
-      }
-    } finally {
-      setInstalling(null);
-    }
-  };
-
   const handleInstallOpenclaw = async () => {
     setupLogger.action('安装 OpenClaw');
-    setupLogger.info('开始安装 OpenClaw...');
-    setInstalling('openclaw');
+    setInstalling(true);
     setError(null);
 
     try {
@@ -144,44 +82,23 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
 
       if (result.success) {
         setupLogger.info('✅ OpenClaw 安装成功，初始化配置...');
-        // 初始化配置
         await invoke<InstallResult>('init_openclaw_config');
         setupLogger.info('✅ 配置初始化完成');
-        // 重新检查环境
         await checkEnvironment();
       } else {
-        setupLogger.warn('自动安装失败，打开终端手动安装');
-        // 打开终端手动安装
-        await invoke<string>('open_install_terminal', { installType: 'openclaw' });
-        setError('已打开安装终端，请在终端中完成安装后点击"重新检查"');
+        setError(result.error || result.message || '安装失败，请重试');
       }
     } catch (e) {
-      setupLogger.error('安装失败，尝试打开终端', e);
-      try {
-        await invoke<string>('open_install_terminal', { installType: 'openclaw' });
-        setError('已打开安装终端，请在终端中完成安装后点击"重新检查"');
-      } catch (termErr) {
-        setError(`安装失败: ${e}。${termErr}`);
-      }
+      setError(`安装失败: ${e}`);
     } finally {
-      setInstalling(null);
+      setInstalling(false);
     }
   };
 
-  const getOsName = (os: string) => {
-    switch (os) {
-      case 'windows': return 'Windows';
-      case 'macos': return 'macOS';
-      case 'linux': return 'Linux';
-      default: return os;
-    }
-  };
-
-  // 渲染安装内容（复用于嵌入模式和全屏模式）
   const renderContent = () => {
     return (
       <AnimatePresence mode="wait">
-        {/* 检查中状态 */}
+        {/* 检查中 */}
         {checking && (
           <motion.div
             key="checking"
@@ -190,8 +107,8 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
             exit={{ opacity: 0 }}
             className="text-center py-6"
           >
-            <Loader2 className="w-10 h-10 text-brand-500 animate-spin mx-auto mb-3" />
-            <p className="text-dark-300">正在检测系统环境...</p>
+            <Loader2 className="w-10 h-10 text-claw-500 animate-spin mx-auto mb-3" />
+            <p className="text-gray-500 dark:text-gray-400">正在检测系统环境...</p>
           </motion.div>
         )}
 
@@ -204,136 +121,35 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
             exit={{ opacity: 0 }}
             className="space-y-4"
           >
-            {/* 系统信息（仅非嵌入模式） */}
-            {!embedded && (
-              <div className="flex items-center justify-between text-sm text-dark-400 pb-4 border-b border-dark-700">
-                <span>操作系统</span>
-                <span className="text-dark-200">{getOsName(envStatus.os)}</span>
-              </div>
-            )}
-
-            {/* Git 状态 */}
+            {/* OpenClaw 状态行 */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${envStatus.git_installed
-                    ? 'bg-green-500/20 text-green-400'
-                    : 'bg-red-500/20 text-red-400'
-                  }`}>
-                  <GitBranch className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="text-white font-medium">Git</p>
-                  <p className="text-sm text-dark-400">
-                    {envStatus.git_version || '未安装'}
-                  </p>
-                </div>
-              </div>
-
-              {envStatus.git_installed ? (
-                <CheckCircle2 className="w-6 h-6 text-green-400" />
-              ) : (
-                <button
-                  onClick={handleInstallGit}
-                  disabled={installing !== null}
-                  className="btn-primary text-sm px-4 py-2 flex items-center gap-2"
-                >
-                  {installing === 'git' ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      安装中...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4" />
-                      安装
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
-
-            {/* Node.js 状态 */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${envStatus.node_installed && envStatus.node_version_ok
-                    ? 'bg-green-500/20 text-green-400'
-                    : 'bg-red-500/20 text-red-400'
-                  }`}>
-                  <Cpu className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="text-white font-medium">Node.js</p>
-                  <p className="text-sm text-dark-400">
-                    {envStatus.node_version
-                      ? `${envStatus.node_version} ${envStatus.node_version_ok ? '✓' : '(需要 v22+)'}`
-                      : '未安装'}
-                  </p>
-                </div>
-              </div>
-
-              {envStatus.node_installed && envStatus.node_version_ok ? (
-                <CheckCircle2 className="w-6 h-6 text-green-400" />
-              ) : (
-                <button
-                  onClick={handleInstallNodejs}
-                  disabled={installing !== null}
-                  className="btn-primary text-sm px-4 py-2 flex items-center gap-2"
-                >
-                  {installing === 'nodejs' ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      安装中...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4" />
-                      安装
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
-
-            {/* OpenClaw 状态 */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${envStatus.openclaw_installed
-                    ? 'bg-green-500/20 text-green-400'
-                    : 'bg-red-500/20 text-red-400'
-                  }`}>
+                <div className="p-2 rounded-lg bg-red-500/20 text-red-500 dark:text-red-400">
                   <Package className="w-5 h-5" />
                 </div>
                 <div>
-                  <p className="text-white font-medium">OpenClaw</p>
-                  <p className="text-sm text-dark-400">
-                    {envStatus.openclaw_version || '未安装'}
-                  </p>
+                  <p className="text-gray-900 dark:text-white font-medium">OpenClaw</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">未安装</p>
                 </div>
               </div>
 
-              {envStatus.openclaw_installed ? (
-                <CheckCircle2 className="w-6 h-6 text-green-400" />
-              ) : (
-                <button
-                  onClick={handleInstallOpenclaw}
-                  disabled={installing !== null || !envStatus.node_version_ok}
-                  className={`btn-primary text-sm px-4 py-2 flex items-center gap-2 ${!envStatus.node_version_ok ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
-                  title={!envStatus.node_version_ok ? '请先安装 Node.js' : ''}
-                >
-                  {installing === 'openclaw' ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      安装中...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4" />
-                      安装
-                    </>
-                  )}
-                </button>
-              )}
+              <button
+                onClick={handleInstallOpenclaw}
+                disabled={installing}
+                className="btn-primary text-sm px-4 py-2 flex items-center gap-2"
+              >
+                {installing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    安装中...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    安装
+                  </>
+                )}
+              </button>
             </div>
 
             {/* 错误信息 */}
@@ -343,43 +159,20 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
                 animate={{ opacity: 1, y: 0 }}
                 className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg"
               >
-                <p className="text-yellow-400 text-sm">{error}</p>
+                <p className="text-yellow-600 dark:text-yellow-400 text-sm">{error}</p>
               </motion.div>
             )}
 
             {/* 操作按钮 */}
-            <div className="flex gap-3 pt-4 border-t border-dark-700/50">
+            <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-white/[0.08]">
               <button
                 onClick={checkEnvironment}
-                disabled={checking || installing !== null}
+                disabled={checking || installing}
                 className="flex-1 btn-secondary py-2.5 flex items-center justify-center gap-2"
               >
                 <RefreshCw className={`w-4 h-4 ${checking ? 'animate-spin' : ''}`} />
                 重新检查
               </button>
-
-              {envStatus.ready && (
-                <button
-                  onClick={onComplete}
-                  className="flex-1 btn-primary py-2.5 flex items-center justify-center gap-2"
-                >
-                  开始使用
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-
-            {/* 帮助链接 */}
-            <div className="text-center pt-1">
-              <a
-                href="https://nodejs.org/en/download"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-dark-400 hover:text-brand-400 transition-colors inline-flex items-center gap-1"
-              >
-                手动下载 Node.js
-                <ExternalLink className="w-3 h-3" />
-              </a>
             </div>
           </motion.div>
         )}
@@ -397,76 +190,72 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
               animate={{ scale: 1 }}
               transition={{ type: 'spring', damping: 10, delay: 0.1 }}
             >
-              <CheckCircle2 className="w-12 h-12 text-green-400 mx-auto mb-3" />
+              <CheckCircle2 className="w-12 h-12 text-green-500 dark:text-green-400 mx-auto mb-3" />
             </motion.div>
-            <h3 className="text-lg font-bold text-white mb-1">环境就绪！</h3>
-            <p className="text-dark-400 text-sm">
-              Node.js 和 OpenClaw 已正确安装
-            </p>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">环境就绪！</h3>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">OpenClaw 已正确安装</p>
+            <button
+              onClick={onComplete}
+              className="mt-4 btn-primary py-2.5 px-6 flex items-center justify-center gap-2 mx-auto"
+            >
+              开始使用
+              <ArrowRight className="w-4 h-4" />
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
     );
   };
 
-  // 嵌入模式：作为卡片显示在 Dashboard 中
+  // 嵌入模式
   if (embedded) {
     return (
-      <div className="bg-gradient-to-br from-yellow-500/10 to-orange-500/10 border border-yellow-500/30 rounded-2xl p-6">
+      <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-2xl p-6">
         <div className="flex items-start gap-4 mb-4">
           <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-yellow-500 to-orange-500 flex items-center justify-center">
             <span className="text-2xl">⚠️</span>
           </div>
           <div>
-            <h2 className="text-lg font-bold text-white mb-1">环境配置</h2>
-            <p className="text-dark-400 text-sm">检测到缺少必要的依赖，请完成以下安装</p>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">环境配置</h2>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">检测到 OpenClaw 未安装，请完成安装</p>
           </div>
         </div>
-
         {renderContent()}
       </div>
     );
   }
 
-  // 全屏模式（保留用于特殊情况）
+  // 全屏模式
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-dark-900 flex items-center justify-center p-8">
-      {/* 背景装饰 */}
-      <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-brand-500/10 rounded-full blur-3xl" />
+    <div className="min-h-screen bg-gray-50 dark:bg-[#0d0d0f] flex items-center justify-center p-8">
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-claw-500/10 rounded-full blur-3xl" />
         <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl" />
       </div>
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative z-10 w-full max-w-lg"
+        className="relative z-10 w-full max-w-md"
       >
-        {/* Logo 和标题 */}
         <div className="text-center mb-8">
           <motion.div
             initial={{ scale: 0.8 }}
             animate={{ scale: 1 }}
             transition={{ type: 'spring', damping: 15 }}
-            className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-brand-500 to-purple-600 mb-4 shadow-lg shadow-brand-500/25"
+            className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-claw-500 to-purple-600 mb-4 shadow-lg shadow-claw-500/25"
           >
             <span className="text-4xl">🦞</span>
           </motion.div>
-          <h1 className="text-2xl font-bold text-white mb-2">OpenClaw Manager</h1>
-          <p className="text-dark-400">环境检测与安装向导</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">OpenClaw Manager</h1>
+          <p className="text-gray-500 dark:text-gray-400">环境检测与安装向导</p>
         </div>
 
-        {/* 主卡片 */}
-        <motion.div
-          layout
-          className="glass-card rounded-2xl p-6 shadow-xl"
-        >
+        <div className="card rounded-2xl p-6 shadow-xl">
           {renderContent()}
-        </motion.div>
+        </div>
 
-        {/* 版本信息 */}
-        <p className="text-center text-dark-500 text-xs mt-6">
+        <p className="text-center text-gray-400 dark:text-gray-600 text-xs mt-6">
           OpenClaw Manager v0.0.7
         </p>
       </motion.div>
