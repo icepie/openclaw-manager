@@ -76,7 +76,9 @@ jobs:
           $bundlePath = "src-tauri/bundle/resources/openclaw-bundle"
           if (-not (Test-Path $bundlePath)) { throw "Bundle directory not found: $bundlePath" }
           Set-Location src-tauri/bundle/resources
-          tar -czf openclaw-bundle-${{ matrix.os }}-${{ matrix.arch }}.tar.gz openclaw-bundle/
+          tar --dereference -czf openclaw-bundle-${{ matrix.os }}-${{ matrix.arch }}.tar.gz `
+            --exclude='openclaw-bundle/npm-cache' `
+            openclaw-bundle/
           Move-Item openclaw-bundle-${{ matrix.os }}-${{ matrix.arch }}.tar.gz ../../../
 
       - name: Upload bundle artifact
