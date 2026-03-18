@@ -737,7 +737,13 @@ fn resolve_bundled_node_binary(bundle_dir: &PathBuf) -> Option<PathBuf> {
 
 fn prefix_has_openclaw_binary(prefix: &PathBuf) -> bool {
     let candidates: &[&str] = if cfg!(target_os = "windows") {
-        &["bin/openclaw.cmd", "bin/openclaw.exe"]
+        // Windows: npm -g --prefix puts bin links in node_modules/.bin/
+        &[
+            "node_modules/.bin/openclaw.cmd",
+            "node_modules/.bin/openclaw",
+            "openclaw.cmd",
+            "bin/openclaw.cmd",
+        ]
     } else {
         &["bin/openclaw"]
     };
@@ -756,7 +762,6 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
             fs::copy(&src_path, &dst_path).map_err(|e| e.to_string())?;
             #[cfg(unix)]
             {
-                use std::os::unix::fs::PermissionsExt;
                 if let Ok(meta) = fs::metadata(&src_path) {
                     let _ = fs::set_permissions(&dst_path, meta.permissions());
                 }
@@ -1746,26 +1751,29 @@ openclaw --version
     }
 }
 
-/// 打开一个已注入 ~/.openclaw/bin 到 PATH 的终端
+/// 打开一个已注入 ~/.openclaw/bin 和 ~/.openclaw/node 到 PATH 的终端
 #[command]
 pub async fn open_env_terminal() -> Result<String, String> {
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .unwrap_or_else(|_| "~".to_string());
     let openclaw_bin = format!("{}/.openclaw/bin", home);
+    let openclaw_node = format!("{}/.openclaw/node", home);
 
     if platform::is_windows() {
         // PowerShell: 在新窗口中注入 PATH 并保持打开
+        let bin_win = openclaw_bin.replace('/', "\\");
+        let node_win = openclaw_node.replace('/', "\\");
         let script = format!(
-            r#"Start-Process powershell -ArgumentList '-NoExit', '-Command', '$env:PATH = "{bin};$env:PATH"; Write-Host "OpenClaw PATH 已注入: {bin}" -ForegroundColor Green; Write-Host "当前 PATH 包含: $(($env:PATH -split ";") -join "`n")" -ForegroundColor Gray'"#,
-            bin = openclaw_bin.replace('/', "\\")
+            r#"Start-Process powershell -ArgumentList '-NoExit', '-Command', '$env:PATH = "{bin};{node};$env:PATH"; Write-Host "OpenClaw PATH 已注入" -ForegroundColor Green'"#,
+            bin = bin_win, node = node_win
         );
         shell::run_powershell_output(&script)?;
         Ok("已打开终端（PATH 已注入）".to_string())
     } else if platform::is_macos() {
         let script_content = format!(
-            "#!/bin/sh\nexport PATH=\"{bin}:$PATH\"\nexec \"$SHELL\" -l\n",
-            bin = openclaw_bin
+            "#!/bin/sh\nexport PATH=\"{bin}:{node}:$PATH\"\nexec \"$SHELL\" -l\n",
+            bin = openclaw_bin, node = openclaw_node
         );
         let script_path = "/tmp/openclaw_env_terminal.command";
         std::fs::write(script_path, script_content)
@@ -1778,7 +1786,8 @@ pub async fn open_env_terminal() -> Result<String, String> {
     } else {
         // Linux: 尝试常见终端模拟器
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
-        let env_arg = format!("PATH={}:$PATH", openclaw_bin);
+        let new_path = format!("{}:{}:{}", openclaw_bin, openclaw_node,
+            std::env::var("PATH").unwrap_or_default());
         let terminals: &[(&str, &[&str])] = &[
             ("gnome-terminal", &["--"]),
             ("xterm", &["-e"]),
@@ -1788,16 +1797,15 @@ pub async fn open_env_terminal() -> Result<String, String> {
         for (term, args) in terminals {
             let mut cmd = Command::new(term);
             cmd.args(*args).arg(&shell);
-            cmd.env("PATH", format!("{}:{}", openclaw_bin,
-                std::env::var("PATH").unwrap_or_default()));
+            cmd.env("PATH", &new_path);
             if cmd.spawn().is_ok() {
                 return Ok(format!("已打开 {} （PATH 已注入）", term));
             }
         }
         // fallback: 输出提示命令
         Err(format!(
-            "未找到可用终端，请手动运行：\nexport PATH=\"{}:$PATH\"\n然后执行 {} -l",
-            openclaw_bin, shell
+            "未找到可用终端，请手动运行：\nexport PATH=\"{}:{}:$PATH\"\n然后执行 {} -l",
+            openclaw_bin, openclaw_node, shell
         ))
     }
 }
