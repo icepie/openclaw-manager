@@ -454,23 +454,39 @@ pub async fn get_official_providers() -> Result<Vec<OfficialProvider>, String> {
         OfficialProvider {
             id: "nicerouter".to_string(),
             name: "NiceRouter".to_string(),
-            icon: "🚀".to_string(),
-            default_base_url: Some("https://nicerouter.com".to_string()),
+            icon: "https://nicerouterstatic.niceaigc.com/logo.svg".to_string(),
+            default_base_url: Some("https://nicerouter.com/v1".to_string()),
             api_type: "openai-completions".to_string(),
             requires_api_key: true,
             docs_url: Some("https://nicerouter.com".to_string()),
             suggested_models: vec![
+                SuggestedModel {
+                    id: "gpt-5.4".to_string(),
+                    name: "GPT-5.4".to_string(),
+                    description: Some("通过 NiceRouter 访问".to_string()),
+                    context_window: Some(128000),
+                    max_tokens: Some(16384),
+                    recommended: true,
+                },
+                SuggestedModel {
+                    id: "claude-sonnet-4-6".to_string(),
+                    name: "Claude Sonnet 4.6".to_string(),
+                    description: Some("通过 NiceRouter 访问".to_string()),
+                    context_window: Some(200000),
+                    max_tokens: Some(8192),
+                    recommended: false,
+                },
                 SuggestedModel {
                     id: "claude-opus-4-5".to_string(),
                     name: "Claude Opus 4.5".to_string(),
                     description: Some("通过 NiceRouter 访问".to_string()),
                     context_window: Some(200000),
                     max_tokens: Some(8192),
-                    recommended: true,
+                    recommended: false,
                 },
                 SuggestedModel {
-                    id: "gemini-3-pro-preview".to_string(),
-                    name: "Gemini 3 Pro Preview".to_string(),
+                    id: "gemini-3.1-pro-preview".to_string(),
+                    name: "Gemini 3.1 Pro Preview".to_string(),
                     description: Some("通过 NiceRouter 访问".to_string()),
                     context_window: Some(1000000),
                     max_tokens: Some(8192),
@@ -549,6 +565,29 @@ pub async fn get_official_providers() -> Result<Vec<OfficialProvider>, String> {
     Ok(providers)
 }
 
+/// Provider URL 迁移表：旧 baseUrl → 新 baseUrl
+const PROVIDER_URL_MIGRATIONS: &[(&str, &str, &str)] = &[
+    // (provider_id, old_url, new_url)
+    ("nicerouter", "https://nicerouter.com", "https://nicerouter.com/v1"),
+];
+
+/// 检查并迁移已配置 Provider 的过期 baseUrl
+fn migrate_provider_urls(config: &mut Value) -> bool {
+    let mut changed = false;
+    for (provider_id, old_url, new_url) in PROVIDER_URL_MIGRATIONS {
+        if let Some(base_url) = config
+            .pointer_mut(&format!("/models/providers/{}/baseUrl", provider_id))
+        {
+            if base_url.as_str() == Some(old_url) {
+                *base_url = json!(new_url);
+                info!("[迁移] {} baseUrl: {} → {}", provider_id, old_url, new_url);
+                changed = true;
+            }
+        }
+    }
+    changed
+}
+
 /// 获取 AI 配置概览
 #[command]
 pub async fn get_ai_config() -> Result<AIConfigOverview, String> {
@@ -557,7 +596,12 @@ pub async fn get_ai_config() -> Result<AIConfigOverview, String> {
     let config_path = platform::get_config_file_path();
     info!("[AI 配置] 配置文件路径: {}", config_path);
 
-    let config = load_openclaw_config()?;
+    let mut config = load_openclaw_config()?;
+
+    // 自动迁移过期的 Provider URL
+    if migrate_provider_urls(&mut config) {
+        let _ = save_openclaw_config(&config);
+    }
     debug!("[AI 配置] 配置内容: {}", serde_json::to_string_pretty(&config).unwrap_or_default());
 
     // 解析主模型
