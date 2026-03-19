@@ -1,16 +1,12 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
-  User,
-  Shield,
-  Save,
   Loader2,
   FolderOpen,
   FileCode,
   Trash2,
   AlertTriangle,
   X,
-  ChevronDown,
 } from 'lucide-react';
 
 interface InstallResult {
@@ -19,122 +15,14 @@ interface InstallResult {
   error?: string;
 }
 
-const TIMEZONES = [
-  { value: 'Asia/Shanghai', label: 'Asia/Shanghai (北京时间)' },
-  { value: 'Asia/Hong_Kong', label: 'Asia/Hong_Kong (香港时间)' },
-  { value: 'Asia/Tokyo', label: 'Asia/Tokyo (东京时间)' },
-  { value: 'America/New_York', label: 'America/New_York (纽约时间)' },
-  { value: 'America/Los_Angeles', label: 'America/Los_Angeles (洛杉矶时间)' },
-  { value: 'Europe/London', label: 'Europe/London (伦敦时间)' },
-  { value: 'UTC', label: 'UTC' },
-];
-
-function CustomSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const selected = TIMEZONES.find((t) => t.value === value);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="input-base flex items-center justify-between gap-2 cursor-pointer text-left"
-      >
-        <span>{selected?.label ?? value}</span>
-        <ChevronDown className={`w-4 h-4 flex-shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-      {open && (
-        <div className="absolute z-50 mt-1 w-full rounded-lg border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-[#1a1a1f] shadow-lg overflow-hidden">
-          {TIMEZONES.map((tz) => (
-            <button
-              key={tz.value}
-              type="button"
-              onClick={() => { onChange(tz.value); setOpen(false); }}
-              className={`w-full text-left px-3 py-2 text-sm transition-colors
-                ${value === tz.value
-                  ? 'bg-claw-500/10 text-claw-500'
-                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/[0.06]'
-                }`}
-            >
-              {tz.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 interface SettingsProps {
   onEnvironmentChange?: () => void;
 }
 
 export function Settings({ onEnvironmentChange }: SettingsProps) {
-  const [identity, setIdentity] = useState({
-    botName: 'Clawd',
-    userName: '主人',
-    timezone: 'Asia/Shanghai',
-  });
-  const [security, setSecurity] = useState({
-    whitelist: false,
-    fileAccess: false,
-  });
-  const [saving, setSaving] = useState(false);
   const [showUninstallConfirm, setShowUninstallConfirm] = useState(false);
   const [uninstalling, setUninstalling] = useState(false);
   const [uninstallResult, setUninstallResult] = useState<InstallResult | null>(null);
-
-  useEffect(() => {
-    invoke<Record<string, unknown>>('get_manager_config').then((cfg) => {
-      const persona = cfg?.persona as Record<string, unknown> | undefined;
-      const sec = cfg?.security as Record<string, unknown> | undefined;
-      if (persona) {
-        setIdentity({
-          botName: (persona.bot_name as string) || 'Clawd',
-          userName: (persona.user_name as string) || '主人',
-          timezone: (persona.timezone as string) || 'Asia/Shanghai',
-        });
-      }
-      if (sec) {
-        setSecurity({
-          whitelist: !!(sec.whitelist_enabled),
-          fileAccess: !!(sec.file_access_enabled),
-        });
-      }
-    }).catch(() => {});
-  }, []);
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await invoke('save_manager_config', {
-        config: {
-          persona: {
-            bot_name: identity.botName,
-            user_name: identity.userName,
-            timezone: identity.timezone,
-          },
-          security: {
-            whitelist_enabled: security.whitelist,
-            file_access_enabled: security.fileAccess,
-          },
-        },
-      });
-    } catch (e) {
-      console.error('保存失败:', e);
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const openDir = async (subpath?: string) => {
     try {
@@ -174,96 +62,6 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
   return (
     <div className="h-full overflow-y-auto scroll-container">
       <div className="max-w-xl space-y-4">
-        {/* 身份配置 */}
-        <div className="card p-5">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="w-8 h-8 rounded-lg bg-claw-500/10 flex items-center justify-center">
-              <User size={16} className="text-claw-500" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">身份配置</h3>
-              <p className="text-xs text-gray-400 dark:text-gray-500">设置 AI 助手的名称和称呼</p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">
-                AI 助手名称
-              </label>
-              <input
-                type="text"
-                value={identity.botName}
-                onChange={(e) =>
-                  setIdentity({ ...identity, botName: e.target.value })
-                }
-                placeholder="Clawd"
-                className="input-base"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">
-                你的称呼
-              </label>
-              <input
-                type="text"
-                value={identity.userName}
-                onChange={(e) =>
-                  setIdentity({ ...identity, userName: e.target.value })
-                }
-                placeholder="主人"
-                className="input-base"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">时区</label>
-              <CustomSelect
-                value={identity.timezone}
-                onChange={(v) => setIdentity({ ...identity, timezone: v })}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* 安全设置 */}
-        <div className="card p-5">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
-              <Shield size={16} className="text-amber-500" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">安全设置</h3>
-              <p className="text-xs text-gray-400 dark:text-gray-500">权限和访问控制</p>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <div className="flex items-center justify-between py-2.5 px-3 rounded-lg bg-gray-50 dark:bg-white/[0.03]">
-              <div>
-                <p className="text-sm text-gray-900 dark:text-white">启用白名单</p>
-                <p className="text-xs text-gray-400 dark:text-gray-500">只允许白名单用户访问</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" className="sr-only peer" checked={security.whitelist} onChange={(e) => setSecurity({ ...security, whitelist: e.target.checked })} />
-                <div className="w-9 h-5 bg-gray-200 dark:bg-white/10 peer-focus:ring-2 peer-focus:ring-claw-500/30 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-claw-500"></div>
-              </label>
-            </div>
-
-            <div className="flex items-center justify-between py-2.5 px-3 rounded-lg bg-gray-50 dark:bg-white/[0.03]">
-              <div>
-                <p className="text-sm text-gray-900 dark:text-white">文件访问权限</p>
-                <p className="text-xs text-gray-400 dark:text-gray-500">允许 AI 读写本地文件</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" className="sr-only peer" checked={security.fileAccess} onChange={(e) => setSecurity({ ...security, fileAccess: e.target.checked })} />
-                <div className="w-9 h-5 bg-gray-200 dark:bg-white/10 peer-focus:ring-2 peer-focus:ring-claw-500/30 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-claw-500"></div>
-              </label>
-            </div>
-          </div>
-        </div>
-
         {/* 高级设置 */}
         <div className="card p-5">
           <div className="flex items-center gap-3 mb-5">
@@ -419,21 +217,6 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
           </div>
         )}
 
-        {/* 保存按钮 */}
-        <div className="flex justify-end">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="btn-primary flex items-center gap-2"
-          >
-            {saving ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <Save size={16} />
-            )}
-            保存设置
-          </button>
-        </div>
       </div>
     </div>
   );

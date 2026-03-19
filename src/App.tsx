@@ -44,10 +44,10 @@ function App() {
   // 关闭行为处理
   useEffect(() => {
     if (!isTauri()) return;
-    const unlisten = listen('close-requested', () => {
+    const unlisten = listen('close-requested', async () => {
       const pref = localStorage.getItem('close_behavior') || 'ask';
       if (pref === 'tray') {
-        getCurrentWindow().hide();
+        await getCurrentWindow().hide();
       } else if (pref === 'quit') {
         invoke('force_quit');
       } else {
@@ -57,11 +57,11 @@ function App() {
     return () => { unlisten.then(fn => fn()); };
   }, []);
 
-  const handleCloseAction = (action: 'tray' | 'quit') => {
+  const handleCloseAction = async (action: 'tray' | 'quit') => {
     if (rememberClose) localStorage.setItem('close_behavior', action);
     setCloseDialog(false);
     if (action === 'tray') {
-      getCurrentWindow().hide();
+      await getCurrentWindow().hide();
     } else {
       invoke('force_quit');
     }

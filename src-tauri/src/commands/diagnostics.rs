@@ -790,7 +790,7 @@ read -p "按回车键关闭..."
                 let extended_path = crate::utils::shell::get_extended_path();
 
                 let script = format!(
-                    "set PATH={};%PATH% && start cmd /k \"{}\" channels login --channel whatsapp",
+                    "set PATH={};%PATH% && start cmd /k {} channels login --channel whatsapp",
                     extended_path, openclaw_path
                 );
                 Command::new("cmd")

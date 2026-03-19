@@ -408,12 +408,12 @@ pub fn spawn_openclaw_gateway() -> io::Result<()> {
     let mut cmd = if openclaw_path.ends_with(".cmd") {
         info!("[Shell] Windows 模式: 使用 cmd /c 执行");
         let mut c = Command::new("cmd");
-        c.args(["/c", &openclaw_path, "gateway", "--port", "18789", "--allow-unconfigured"]);
+        c.args(["/c", &openclaw_path, "gateway", "--port", "18789", "--allow-unconfigured", "--force"]);
         c
     } else {
         info!("[Shell] Unix 模式: 直接执行");
         let mut c = Command::new(&openclaw_path);
-        c.args(["gateway", "--port", "18789", "--allow-unconfigured"]);
+        c.args(["gateway", "--port", "18789", "--allow-unconfigured", "--force"]);
         c
     };
     
