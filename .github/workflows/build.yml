@@ -156,6 +156,10 @@ jobs:
         run: mkdir -p src-tauri/bundle/resources/openclaw-bundle
 
       # app 构建跳过 bundle 准备（bundle 单独发布）
+      - name: Install create-dmg (macOS)
+        if: matrix.platform == 'macos-latest'
+        run: brew install create-dmg
+
       - name: Build Tauri app (macOS Universal)
         if: matrix.platform == 'macos-latest'
         uses: tauri-apps/tauri-action@v0
