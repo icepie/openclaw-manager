@@ -10,10 +10,16 @@ mod utils;
 
 use commands::{config, diagnostics, installer, process, service};
 use tauri::{
+    command,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager, WindowEvent,
+    Emitter, Manager, WindowEvent,
 };
+
+#[command]
+fn force_quit(app: tauri::AppHandle) {
+    app.exit(0);
+}
 
 fn main() {
     env_logger::Builder::from_env(
@@ -84,6 +90,7 @@ fn main() {
             // 版本更新
             installer::check_openclaw_update,
             installer::update_openclaw,
+            force_quit,
         ])
         .setup(|app| {
             let show_item = MenuItem::with_id(app, "show", "显示窗口", true, None::<&str>)?;
@@ -131,7 +138,7 @@ fn main() {
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                let _ = window.hide();
+                window.emit("close-requested", ()).ok();
             }
         })
         .run(tauri::generate_context!())

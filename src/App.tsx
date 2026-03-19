@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';import { Sidebar } from './components/Layout/Sidebar';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { Sidebar } from './components/Layout/Sidebar';
 import { Header } from './components/Layout/Header';
 import { Dashboard } from './components/Dashboard';
 import { AIConfig } from './components/AIConfig';
@@ -34,6 +37,35 @@ function App() {
   const [isReady, setIsReady] = useState<boolean | null>(null);
   const [envStatus, setEnvStatus] = useState<EnvironmentStatus | null>(null);
   const [serviceStatus, setServiceStatus] = useState<ServiceStatus | null>(null);
+
+  const [closeDialog, setCloseDialog] = useState(false);
+  const [rememberClose, setRememberClose] = useState(false);
+
+  // 关闭行为处理
+  useEffect(() => {
+    if (!isTauri()) return;
+    const unlisten = listen('close-requested', () => {
+      const pref = localStorage.getItem('close_behavior') || 'ask';
+      if (pref === 'tray') {
+        getCurrentWindow().hide();
+      } else if (pref === 'quit') {
+        invoke('force_quit');
+      } else {
+        setCloseDialog(true);
+      }
+    });
+    return () => { unlisten.then(fn => fn()); };
+  }, []);
+
+  const handleCloseAction = (action: 'tray' | 'quit') => {
+    if (rememberClose) localStorage.setItem('close_behavior', action);
+    setCloseDialog(false);
+    if (action === 'tray') {
+      getCurrentWindow().hide();
+    } else {
+      invoke('force_quit');
+    }
+  };
 
   // 检查环境
   const checkEnvironment = useCallback(async () => {
@@ -135,6 +167,41 @@ function App() {
     <div className="flex h-screen bg-gray-50 dark:bg-[#0d0d0f] overflow-hidden">
       {/* 背景装饰 */}
       <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
+
+      {/* 关闭确认对话框 */}
+      {closeDialog && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-dark-800 rounded-2xl border border-gray-200 dark:border-dark-600 p-6 w-80 shadow-xl">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">关闭窗口</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">请选择关闭行为</p>
+            <div className="space-y-2 mb-4">
+              <button
+                onClick={() => handleCloseAction('tray')}
+                className="w-full text-left px-4 py-3 rounded-xl bg-gray-50 dark:bg-dark-700 hover:bg-claw-500/10 border border-gray-200 dark:border-dark-500 hover:border-claw-500/40 transition-all"
+              >
+                <p className="text-sm font-medium text-gray-900 dark:text-white">最小化到托盘</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">后台继续运行</p>
+              </button>
+              <button
+                onClick={() => handleCloseAction('quit')}
+                className="w-full text-left px-4 py-3 rounded-xl bg-gray-50 dark:bg-dark-700 hover:bg-red-500/10 border border-gray-200 dark:border-dark-500 hover:border-red-500/40 transition-all"
+              >
+                <p className="text-sm font-medium text-gray-900 dark:text-white">退出应用</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">完全退出程序</p>
+              </button>
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={rememberClose}
+                onChange={e => setRememberClose(e.target.checked)}
+                className="rounded"
+              />
+              <span className="text-xs text-gray-500 dark:text-gray-400">记住我的选择</span>
+            </label>
+          </div>
+        </div>
+      )}
       
       {/* 更新提示横幅 */}
       {/* 侧边栏 */}

@@ -911,7 +911,6 @@ const GHPROXY_LIST: &[&str] = &[
     "https://fastgit.cc/",
     "https://ghproxy.cxkpro.top/",
     "https://gh.idayer.com/",
-    "https://gh.h233.eu.org/",
 ];
 
 /// 返回不带代理的 GitHub 原始 bundle URL
@@ -962,7 +961,7 @@ pub async fn select_fastest_proxy() -> String {
             let result = c.head(&url).send().await;
             let latency = start.elapsed().as_millis();
             match result {
-                Ok(resp) if resp.status().as_u16() < 500 => {
+                Ok(resp) if resp.status().as_u16() < 400 => {
                     info!("[代理测速] {} → {}ms ({})", proxy_owned, latency, resp.status());
                     Some((proxy_owned, latency))
                 }
