@@ -34,6 +34,63 @@ fn save_openclaw_config(config: &Value) -> Result<(), String> {
     file::write_file(&config_path, &content).map_err(|e| format!("写入配置文件失败: {}", e))
 }
 
+/// 加载 manager.json（Manager 专用配置，不污染 openclaw.json）
+fn load_manager_config() -> Result<Value, String> {
+    let path = platform::get_manager_config_path();
+    if !file::file_exists(&path) {
+        return Ok(json!({}));
+    }
+    let content = file::read_file(&path).map_err(|e| format!("读取 manager.json 失败: {}", e))?;
+    serde_json::from_str(&content).map_err(|e| format!("解析 manager.json 失败: {}", e))
+}
+
+fn save_manager_config_file(config: &Value) -> Result<(), String> {
+    let path = platform::get_manager_config_path();
+    let content = serde_json::to_string_pretty(config).map_err(|e| format!("序列化失败: {}", e))?;
+    file::write_file(&path, &content).map_err(|e| format!("写入 manager.json 失败: {}", e))
+}
+
+/// 获取 Manager 专用配置（persona、security 等）
+/// 首次调用时自动从 openclaw.json 迁移旧数据
+#[command]
+pub async fn get_manager_config() -> Result<Value, String> {
+    let mut mgr = load_manager_config()?;
+    // 迁移：若 manager.json 为空且 openclaw.json 有 persona/security，迁移过来
+    if mgr.as_object().map(|o| o.is_empty()).unwrap_or(true) {
+        if let Ok(mut openclaw) = load_openclaw_config() {
+            let persona = openclaw.get("persona").cloned();
+            let security = openclaw.get("security").cloned();
+            if persona.is_some() || security.is_some() {
+                let obj = mgr.as_object_mut().unwrap();
+                if let Some(p) = persona { obj.insert("persona".to_string(), p); }
+                if let Some(s) = security { obj.insert("security".to_string(), s); }
+                let _ = save_manager_config_file(&mgr);
+                // 从 openclaw.json 中移除
+                if let Some(o) = openclaw.as_object_mut() {
+                    o.remove("persona");
+                    o.remove("security");
+                }
+                let _ = save_openclaw_config(&openclaw);
+                info!("[迁移] persona/security 已从 openclaw.json 迁移到 manager.json");
+            }
+        }
+    }
+    Ok(mgr)
+}
+
+/// 保存 Manager 专用配置
+#[command]
+pub async fn save_manager_config(config: Value) -> Result<String, String> {
+    save_manager_config_file(&config).map_err(|e| e)?;
+    // 确保 openclaw.json 中不含这些 key
+    if let Ok(mut openclaw) = load_openclaw_config() {
+        let obj = openclaw.as_object_mut().unwrap();
+        let changed = obj.remove("persona").is_some() | obj.remove("security").is_some();
+        if changed { let _ = save_openclaw_config(&openclaw); }
+    }
+    Ok("已保存".to_string())
+}
+
 /// 获取完整配置
 #[command]
 pub async fn get_config() -> Result<Value, String> {

@@ -1919,8 +1919,10 @@ pub async fn open_env_terminal() -> Result<String, String> {
         const CREATE_NO_WINDOW: u32 = 0x08000000;
 
         // Build env var injections for PowerShell
+        // Use single quotes for PATH to avoid quoting issues with backslashes/spaces
+        let win_path = extended_path.replace('/', "\\");
         let mut ps_lines = vec![
-            format!("$env:PATH = \"{};$env:PATH\"", extended_path.replace('/', "\\")),
+            format!("$env:PATH = '{}' + ';' + $env:PATH", win_path.replace('\'', "''")),
         ];
         // Inject user env vars from env file
         let env_content = std::fs::read_to_string(&env_file).unwrap_or_default();
@@ -1930,14 +1932,53 @@ pub async fn open_env_terminal() -> Result<String, String> {
             let line = line.strip_prefix("export ").unwrap_or(line);
             if let Some((k, v)) = line.split_once('=') {
                 let v = v.trim().trim_matches('"').trim_matches('\'');
-                ps_lines.push(format!("$env:{} = \"{}\"", k.trim(), v));
+                // Use single quotes, escape any single quotes in value
+                ps_lines.push(format!("$env:{} = '{}'", k.trim(), v.replace('\'', "''")));
             }
         }
         ps_lines.push("Write-Host 'OpenClaw 环境已就绪' -ForegroundColor Green".to_string());
-        ps_lines.push(format!("Write-Host '配置目录: {}' -ForegroundColor Cyan", config_dir));
+        ps_lines.push(format!("Write-Host '配置目录: {}' -ForegroundColor Cyan", config_dir.replace('\'', "''")));
 
         let ps_cmd = ps_lines.join("; ");
-        let script = format!("start powershell -NoExit -Command \"{}\"", ps_cmd);
+        // Use -EncodedCommand to avoid all quoting issues
+        use std::io::Write;
+        let encoded: Vec<u16> = ps_cmd.encode_utf16().collect();
+        let mut bytes = Vec::with_capacity(encoded.len() * 2);
+        for c in &encoded {
+            bytes.write_all(&c.to_le_bytes()).ok();
+        }
+        let b64 = {
+            use std::fmt::Write as FmtWrite;
+            let mut s = String::new();
+            const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+            let mut i = 0;
+            while i + 2 < bytes.len() {
+                let b0 = bytes[i] as usize;
+                let b1 = bytes[i+1] as usize;
+                let b2 = bytes[i+2] as usize;
+                s.push(TABLE[(b0 >> 2)] as char);
+                s.push(TABLE[((b0 & 3) << 4) | (b1 >> 4)] as char);
+                s.push(TABLE[((b1 & 0xf) << 2) | (b2 >> 6)] as char);
+                s.push(TABLE[b2 & 0x3f] as char);
+                i += 3;
+            }
+            if i < bytes.len() {
+                let b0 = bytes[i] as usize;
+                s.push(TABLE[(b0 >> 2)] as char);
+                if i + 1 < bytes.len() {
+                    let b1 = bytes[i+1] as usize;
+                    s.push(TABLE[((b0 & 3) << 4) | (b1 >> 4)] as char);
+                    s.push(TABLE[((b1 & 0xf) << 2)] as char);
+                } else {
+                    s.push(TABLE[((b0 & 3) << 4)] as char);
+                    let _ = write!(s, "=");
+                }
+                let _ = write!(s, "=");
+            }
+            s
+        };
+
+        let script = format!("start powershell -NoExit -EncodedCommand {}", b64);
 
         Command::new("cmd")
             .args(["/c", &script])

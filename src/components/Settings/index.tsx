@@ -94,7 +94,7 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
   const [uninstallResult, setUninstallResult] = useState<InstallResult | null>(null);
 
   useEffect(() => {
-    invoke<Record<string, unknown>>('get_config').then((cfg) => {
+    invoke<Record<string, unknown>>('get_manager_config').then((cfg) => {
       const persona = cfg?.persona as Record<string, unknown> | undefined;
       const sec = cfg?.security as Record<string, unknown> | undefined;
       if (persona) {
@@ -116,20 +116,19 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const cfg = await invoke<Record<string, unknown>>('get_config');
-      const updated = {
-        ...cfg,
-        persona: {
-          bot_name: identity.botName,
-          user_name: identity.userName,
-          timezone: identity.timezone,
+      await invoke('save_manager_config', {
+        config: {
+          persona: {
+            bot_name: identity.botName,
+            user_name: identity.userName,
+            timezone: identity.timezone,
+          },
+          security: {
+            whitelist_enabled: security.whitelist,
+            file_access_enabled: security.fileAccess,
+          },
         },
-        security: {
-          whitelist_enabled: security.whitelist,
-          file_access_enabled: security.fileAccess,
-        },
-      };
-      await invoke('save_config', { config: updated });
+      });
     } catch (e) {
       console.error('保存失败:', e);
     } finally {
@@ -320,12 +319,12 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
           <div className="space-y-3">
             <button
               onClick={() => setShowUninstallConfirm(true)}
-              className="w-full flex items-center gap-3 p-4 bg-red-950/30 rounded-lg hover:bg-red-900/40 transition-colors text-left border border-red-900/30"
+              className="w-full flex items-center gap-3 p-4 bg-red-50 dark:bg-red-950/30 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors text-left border border-red-200 dark:border-red-900/30"
             >
-              <Trash2 size={18} className="text-red-400" />
+              <Trash2 size={18} className="text-red-500 dark:text-red-400" />
               <div className="flex-1">
-                <p className="text-sm text-red-300">卸载 OpenClaw</p>
-                <p className="text-xs text-red-400/70">从系统中移除 OpenClaw CLI 工具</p>
+                <p className="text-sm text-red-600 dark:text-red-300">卸载 OpenClaw</p>
+                <p className="text-xs text-red-500/70 dark:text-red-400/70">从系统中移除 OpenClaw CLI 工具</p>
               </div>
             </button>
           </div>
