@@ -18,6 +18,7 @@ const OPENCLAW_MIN_NODE = "22.16.0";
 const OPENCLAW_SPEC = process.env.OPENCLAW_VERSION
   ? `openclaw@${process.env.OPENCLAW_VERSION}`
   : "openclaw@latest";
+const EXTRA_PLUGINS = ["@openclaw-china/dingtalk"];
 const RUN_MAX_BUFFER = Number(process.env.OPENCLAW_BUNDLE_RUN_MAX_BUFFER || 128 * 1024 * 1024);
 const REQUESTED_NODE_ARCH = normalizeNodeArch(process.env.OPENCLAW_BUNDLE_NODE_ARCH);
 
@@ -249,6 +250,16 @@ async function main() {
       "--cache", cacheDir,
       "--no-audit", "--no-fund", "--loglevel=error",
     ]);
+
+    // 安装额外插件
+    if (EXTRA_PLUGINS.length > 0) {
+      console.log(`[bundle] installing extra plugins: ${EXTRA_PLUGINS.join(", ")}...`);
+      run("npm", [
+        "install", "-g", "--prefix", installPrefix, ...EXTRA_PLUGINS,
+        "--cache", cacheDir,
+        "--no-audit", "--no-fund", "--loglevel=error",
+      ]);
+    }
 
     console.log("[bundle] snapshot installed prefix...");
     await fsp.cp(installPrefix, bundledPrefix, { recursive: true, dereference: true });
