@@ -174,6 +174,40 @@ pub async fn open_dashboard() -> Result<(), String> {
     .map(|_| ())
 }
 
+/// 用系统文件管理器打开指定目录
+#[command]
+pub async fn open_dir(path: String) -> Result<(), String> {
+    info!("[打开目录] {}", path);
+    let _ = std::fs::create_dir_all(&path);
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        Command::new("explorer")
+            .arg(&path)
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 // ============ AI 配置相关命令 ============
 
 /// 获取官方 Provider 列表（预设模板）

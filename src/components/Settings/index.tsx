@@ -137,12 +137,11 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
     }
   };
 
-  const openConfigDir = async () => {
+  const openDir = async (subpath?: string) => {
     try {
-      const { open } = await import('@tauri-apps/plugin-shell');
-      const home = await invoke<{ config_dir: string }>('get_system_info');
-      // 尝试打开配置目录
-      await open(home.config_dir);
+      const info = await invoke<{ config_dir: string }>('get_system_info');
+      const path = subpath ? `${info.config_dir}/${subpath}` : info.config_dir;
+      await invoke('open_dir', { path });
     } catch (e) {
       console.error('打开目录失败:', e);
     }
@@ -280,15 +279,27 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
 
           <div className="space-y-2">
             <button
-              onClick={openConfigDir}
+              onClick={() => openDir()}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
                 bg-gray-50 dark:bg-white/[0.03] hover:bg-gray-100 dark:hover:bg-white/[0.06]
                 transition-colors text-left"
             >
               <FolderOpen size={15} className="text-gray-400 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-gray-900 dark:text-white">打开配置目录</p>
-                <p className="text-xs text-gray-400 font-mono truncate">~/.openclaw</p>
+                <p className="text-sm text-gray-900 dark:text-white">打开安装目录</p>
+                <p className="text-xs text-gray-400 font-mono truncate">~/.openclaw/</p>
+              </div>
+            </button>
+            <button
+              onClick={() => openDir('logs')}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
+                bg-gray-50 dark:bg-white/[0.03] hover:bg-gray-100 dark:hover:bg-white/[0.06]
+                transition-colors text-left"
+            >
+              <FolderOpen size={15} className="text-gray-400 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-gray-900 dark:text-white">打开日志目录</p>
+                <p className="text-xs text-gray-400 font-mono truncate">~/.openclaw/logs/</p>
               </div>
             </button>
           </div>

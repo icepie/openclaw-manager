@@ -47,6 +47,7 @@ fn main() {
             // Gateway Token
             config::get_or_create_gateway_token,
             config::open_dashboard,
+            config::open_dir,
             // AI 配置管理
             config::get_official_providers,
             config::get_ai_config,
