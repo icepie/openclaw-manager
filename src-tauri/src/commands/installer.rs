@@ -913,7 +913,7 @@ pub fn get_bundle_download_url() -> String {
     };
     let ext = if cfg!(target_os = "windows") { "zip" } else { "tar.gz" };
     format!(
-        "https://github.com/icepie/openclaw-manager/releases/download/dev/openclaw-bundle-{}-{}.{}",
+        "https://ghproxy.monkeyray.net/https://github.com/icepie/openclaw-manager/releases/download/dev/openclaw-bundle-{}-{}.{}",
         os, arch, ext
     )
 }
