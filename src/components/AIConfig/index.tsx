@@ -891,11 +891,17 @@ export function AIConfig() {
   };
 
   const runAITest = async () => {
-    aiLogger.action('测试 AI 连接');
+    const primaryModel = aiConfig?.primary_model;
+    if (!primaryModel) return;
+    const slashIdx = primaryModel.indexOf('/');
+    const providerName = slashIdx >= 0 ? primaryModel.slice(0, slashIdx) : primaryModel;
+    const modelId = slashIdx >= 0 ? primaryModel.slice(slashIdx + 1) : primaryModel;
+
+    aiLogger.action(`测试 AI 连接: ${providerName}/${modelId}`);
     setTesting(true);
     setTestResult(null);
     try {
-      const result = await invoke<AITestResult>('test_ai_connection');
+      const result = await invoke<AITestResult>('test_ai_connection', { providerName, modelId });
       setTestResult(result);
       if (result.success) {
         aiLogger.info(`✅ AI 连接测试成功，延迟: ${result.latency_ms}ms`);
@@ -906,8 +912,8 @@ export function AIConfig() {
       aiLogger.error('AI 测试失败', e);
       setTestResult({
         success: false,
-        provider: 'unknown',
-        model: 'unknown',
+        provider: providerName,
+        model: modelId,
         response: null,
         error: String(e),
         latency_ms: null,

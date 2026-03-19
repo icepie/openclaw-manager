@@ -1,7 +1,8 @@
 use crate::models::{AITestResult, ChannelTestResult, DiagnosticResult, SystemInfo};
 use crate::utils::{platform, shell};
 use tauri::command;
-use log::{info, warn, error, debug};
+use log::{info, warn};
+use serde_json;
 
 /// 去除 ANSI 转义序列（颜色代码等）
 fn strip_ansi_codes(input: &str) -> String {
@@ -106,36 +107,6 @@ pub async fn run_doctor() -> Result<Vec<DiagnosticResult>, String> {
         },
     });
     
-    // 检查 Node.js
-    let node_check = shell::run_command_output("node", &["--version"]);
-    results.push(DiagnosticResult {
-        name: "Node.js".to_string(),
-        passed: node_check.is_ok(),
-        message: node_check
-            .clone()
-            .unwrap_or_else(|_| "未安装".to_string()),
-        suggestion: if node_check.is_err() {
-            Some("请安装 Node.js 22+".to_string())
-        } else {
-            None
-        },
-    });
-    
-    // 检查 Git
-    let git_check = shell::run_command_output("git", &["--version"]);
-    results.push(DiagnosticResult {
-        name: "Git".to_string(),
-        passed: git_check.is_ok(),
-        message: git_check
-            .clone()
-            .unwrap_or_else(|_| "未安装".to_string()),
-        suggestion: if git_check.is_err() {
-            Some("请安装 Git: https://git-scm.com".to_string())
-        } else {
-            None
-        },
-    });
-
     // 检查配置文件
     let config_path = platform::get_config_file_path();
     let config_exists = std::path::Path::new(&config_path).exists();
@@ -154,24 +125,6 @@ pub async fn run_doctor() -> Result<Vec<DiagnosticResult>, String> {
         },
     });
     
-    // 检查环境变量文件
-    let env_path = platform::get_env_file_path();
-    let env_exists = std::path::Path::new(&env_path).exists();
-    results.push(DiagnosticResult {
-        name: "环境变量".to_string(),
-        passed: env_exists,
-        message: if env_exists {
-            format!("环境变量文件存在: {}", env_path)
-        } else {
-            "环境变量文件不存在".to_string()
-        },
-        suggestion: if env_exists {
-            None
-        } else {
-            Some("请配置 AI API Key".to_string())
-        },
-    });
-    
     // 运行 openclaw doctor
     if openclaw_installed {
         let doctor_result = shell::run_openclaw(&["doctor"]);
@@ -186,56 +139,121 @@ pub async fn run_doctor() -> Result<Vec<DiagnosticResult>, String> {
     Ok(results)
 }
 
-/// 测试 AI 连接
+/// 测试 AI 连接 — 直接调用模型 API
 #[command]
-pub async fn test_ai_connection() -> Result<AITestResult, String> {
-    info!("[AI测试] 开始测试 AI 连接 (openclaw doctor)...");
+pub async fn test_ai_connection(provider_name: String, model_id: String) -> Result<AITestResult, String> {
+    info!("[AI测试] 测试 {}/{}", provider_name, model_id);
+
+    let config_path = platform::get_config_file_path();
+    let config_str = std::fs::read_to_string(&config_path)
+        .map_err(|e| format!("读取配置失败: {}", e))?;
+    let config: serde_json::Value = serde_json::from_str(&config_str)
+        .map_err(|e| format!("解析配置失败: {}", e))?;
+
+    let provider_config = config
+        .pointer(&format!("/models/providers/{}", provider_name))
+        .ok_or_else(|| format!("找不到 Provider: {}", provider_name))?;
+
+    let base_url = provider_config
+        .get("baseUrl")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "Provider 未配置 baseUrl".to_string())?
+        .trim_end_matches('/')
+        .to_string();
+
+    let api_key = provider_config
+        .get("apiKey")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let is_anthropic = base_url.contains("anthropic.com")
+        || provider_config.get("apiType").and_then(|v| v.as_str()) == Some("anthropic");
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let body = serde_json::json!({
+        "model": model_id,
+        "messages": [{"role": "user", "content": "Hi"}],
+        "max_tokens": 10
+    })
+    .to_string();
 
     let start = std::time::Instant::now();
-    let result = tokio::task::spawn_blocking(|| {
-        crate::utils::shell::run_openclaw(&["doctor"])
-    })
-    .await
-    .map_err(|e| e.to_string())?;
+
+    let resp = if is_anthropic {
+        let mut req = client
+            .post(format!("{}/messages", base_url))
+            .header("content-type", "application/json")
+            .header("anthropic-version", "2023-06-01");
+        if let Some(key) = &api_key {
+            req = req.header("x-api-key", key);
+        }
+        req.body(body).send().await
+    } else {
+        let mut req = client
+            .post(format!("{}/chat/completions", base_url))
+            .header("content-type", "application/json");
+        if let Some(key) = &api_key {
+            req = req.header("authorization", format!("Bearer {}", key));
+        }
+        req.body(body).send().await
+    };
+
     let latency = start.elapsed().as_millis() as u64;
 
-    match result {
-        Ok(output) => {
-            let filtered: String = output
-                .lines()
-                .filter(|l| !l.contains("ExperimentalWarning"))
-                .collect::<Vec<&str>>()
-                .join("\n");
-
-            let lower = filtered.to_lowercase();
-            let success = !lower.contains("error")
-                && !lower.contains("fail")
-                && !filtered.contains("401")
-                && !filtered.contains("403");
-
-            if success {
-                info!("[AI测试] ✓ AI 连接测试成功, 耗时: {}ms", latency);
+    match resp {
+        Ok(r) => {
+            let status = r.status();
+            let text = r.text().await.unwrap_or_default();
+            if status.is_success() {
+                let response_text = serde_json::from_str::<serde_json::Value>(&text)
+                    .ok()
+                    .and_then(|v| {
+                        v.pointer("/choices/0/message/content")
+                            .and_then(|c| c.as_str())
+                            .map(|s| s.to_string())
+                            .or_else(|| {
+                                v.pointer("/content/0/text")
+                                    .and_then(|c| c.as_str())
+                                    .map(|s| s.to_string())
+                            })
+                    })
+                    .unwrap_or_else(|| "OK".to_string());
+                info!("[AI测试] ✓ 成功, 耗时 {}ms", latency);
+                Ok(AITestResult {
+                    success: true,
+                    provider: provider_name,
+                    model: model_id,
+                    response: Some(response_text),
+                    error: None,
+                    latency_ms: Some(latency),
+                })
             } else {
-                warn!("[AI测试] ✗ AI 连接测试失败: {}", filtered);
+                warn!("[AI测试] ✗ HTTP {}: {}", status, text);
+                Ok(AITestResult {
+                    success: false,
+                    provider: provider_name,
+                    model: model_id,
+                    response: None,
+                    error: Some(format!("HTTP {}: {}", status, text)),
+                    latency_ms: Some(latency),
+                })
             }
-
+        }
+        Err(e) => {
+            warn!("[AI测试] ✗ 请求失败: {}", e);
             Ok(AITestResult {
-                success,
-                provider: "current".to_string(),
-                model: "default".to_string(),
-                response: if success { Some(filtered.clone()) } else { None },
-                error: if success { None } else { Some(filtered) },
+                success: false,
+                provider: provider_name,
+                model: model_id,
+                response: None,
+                error: Some(e.to_string()),
                 latency_ms: Some(latency),
             })
         }
-        Err(e) => Ok(AITestResult {
-            success: false,
-            provider: "current".to_string(),
-            model: "default".to_string(),
-            response: None,
-            error: Some(e),
-            latency_ms: Some(latency),
-        }),
     }
 }
 
