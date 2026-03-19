@@ -223,6 +223,14 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
                   </>
                 )}
               </button>
+              {installing && (
+                <button
+                  onClick={() => invoke('cancel_install')}
+                  className="text-sm px-3 py-2 rounded-lg border border-red-300 dark:border-red-500/30 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                >
+                  取消
+                </button>
+              )}
             </div>
 
             {/* 安装状态文字 */}

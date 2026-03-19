@@ -70,6 +70,7 @@ fn main() {
             installer::install_git,
             installer::install_nodejs,
             installer::install_openclaw,
+            installer::cancel_install,
             installer::get_bundle_download_url,
             installer::init_openclaw_config,
             installer::open_install_terminal,

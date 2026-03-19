@@ -5,6 +5,11 @@ use log::{info, warn, error, debug};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+
+/// 全局取消标志
+static INSTALL_CANCELLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// 环境检查结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -991,6 +996,9 @@ async fn download_file(
     let mut stream = resp.bytes_stream();
 
     while let Some(chunk) = stream.next().await {
+        if INSTALL_CANCELLED.load(Ordering::Relaxed) {
+            return Err("已取消".to_string());
+        }
         let chunk = chunk.map_err(|e| format!("读取数据失败: {}", e))?;
         file.write_all(&chunk).await
             .map_err(|e| format!("写入文件失败: {}", e))?;
@@ -1015,6 +1023,9 @@ async fn download_file(
 fn extract_tar_gz(archive: &PathBuf, dest: &PathBuf) -> Result<(), String> {
     use flate2::read::GzDecoder;
     use tar::Archive;
+    if INSTALL_CANCELLED.load(Ordering::Relaxed) {
+        return Err("已取消".to_string());
+    }
     fs::create_dir_all(dest).map_err(|e| e.to_string())?;
     let file = fs::File::open(archive).map_err(|e| format!("打开压缩包失败: {}", e))?;
     let gz = GzDecoder::new(file);
@@ -1025,30 +1036,56 @@ fn extract_tar_gz(archive: &PathBuf, dest: &PathBuf) -> Result<(), String> {
 
 fn extract_zip(archive: &PathBuf, dest: &PathBuf) -> Result<(), String> {
     use zip::ZipArchive;
+    use rayon::prelude::*;
+    if INSTALL_CANCELLED.load(Ordering::Relaxed) {
+        return Err("已取消".to_string());
+    }
     fs::create_dir_all(dest).map_err(|e| e.to_string())?;
+
     let file = fs::File::open(archive).map_err(|e| format!("打开压缩包失败: {}", e))?;
     let mut zip = ZipArchive::new(file).map_err(|e| format!("读取 zip 失败: {}", e))?;
+
+    // First pass: create all directories
     for i in 0..zip.len() {
-        let mut entry = zip.by_index(i).map_err(|e| format!("读取 zip 条目失败: {}", e))?;
-        let out_path = dest.join(entry.mangled_name());
+        let entry = zip.by_index(i).map_err(|e| format!("读取 zip 条目失败: {}", e))?;
         if entry.is_dir() {
-            fs::create_dir_all(&out_path).map_err(|e| e.to_string())?;
-        } else {
-            if let Some(parent) = out_path.parent() {
-                fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-            }
-            let mut out = fs::File::create(&out_path).map_err(|e| format!("创建文件失败: {}", e))?;
-            std::io::copy(&mut entry, &mut out).map_err(|e| format!("写入文件失败: {}", e))?;
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                if let Some(mode) = entry.unix_mode() {
-                    let _ = fs::set_permissions(&out_path, fs::Permissions::from_mode(mode));
-                }
-            }
+            fs::create_dir_all(dest.join(entry.mangled_name())).map_err(|e| e.to_string())?;
         }
     }
-    Ok(())
+
+    // Second pass: collect file entries (index + path + data) for parallel write
+    let entries: Vec<(PathBuf, Vec<u8>, Option<u32>)> = (0..zip.len())
+        .filter_map(|i| {
+            let mut entry = zip.by_index(i).ok()?;
+            if entry.is_dir() { return None; }
+            let out_path = dest.join(entry.mangled_name());
+            let mut data = Vec::with_capacity(entry.size() as usize);
+            std::io::copy(&mut entry, &mut data).ok()?;
+            #[cfg(unix)]
+            let mode = entry.unix_mode();
+            #[cfg(not(unix))]
+            let mode: Option<u32> = None;
+            Some((out_path, data, mode))
+        })
+        .collect();
+
+    // Parallel write
+    let cancelled = &INSTALL_CANCELLED;
+    entries.par_iter().try_for_each(|(out_path, data, mode)| -> Result<(), String> {
+        if cancelled.load(Ordering::Relaxed) {
+            return Err("已取消".to_string());
+        }
+        if let Some(parent) = out_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        fs::write(out_path, data).map_err(|e| format!("写入文件失败: {}", e))?;
+        #[cfg(unix)]
+        if let Some(m) = mode {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(out_path, fs::Permissions::from_mode(*m));
+        }
+        Ok(())
+    })
 }
 
 async fn download_and_install_bundle(app: &tauri::AppHandle, url: &str, install_dir: Option<&Path>) -> Result<(), String> {
@@ -1103,6 +1140,7 @@ async fn download_and_install_bundle(app: &tauri::AppHandle, url: &str, install_
 #[command]
 pub async fn install_openclaw(app: tauri::AppHandle, bundle_url: Option<String>, local_bundle_path: Option<String>, install_dir: Option<String>) -> Result<InstallResult, String> {
     info!("[安装OpenClaw] 开始安装 OpenClaw...");
+    INSTALL_CANCELLED.store(false, Ordering::Relaxed);
 
     let dir: Option<PathBuf> = install_dir.map(PathBuf::from);
     let dir_ref: Option<&Path> = dir.as_deref();
@@ -1502,6 +1540,13 @@ read -p "按回车键关闭..."
         
         Err("无法启动终端，请手动运行: npm install -g openclaw".to_string())
     }
+}
+
+/// 取消正在进行的安装
+#[command]
+pub async fn cancel_install() {
+    info!("[安装] 用户取消安装");
+    INSTALL_CANCELLED.store(true, Ordering::Relaxed);
 }
 
 /// 卸载 OpenClaw
