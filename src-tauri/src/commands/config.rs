@@ -65,13 +65,19 @@ pub async fn get_manager_config() -> Result<Value, String> {
                 if let Some(p) = persona { obj.insert("persona".to_string(), p); }
                 if let Some(s) = security { obj.insert("security".to_string(), s); }
                 let _ = save_manager_config_file(&mgr);
-                // 从 openclaw.json 中移除
                 if let Some(o) = openclaw.as_object_mut() {
                     o.remove("persona");
                     o.remove("security");
                 }
                 let _ = save_openclaw_config(&openclaw);
                 info!("[迁移] persona/security 已从 openclaw.json 迁移到 manager.json");
+            }
+        }
+    } else {
+        // manager.json 已存在，仍需确保 openclaw.json 中无残留
+        if let Ok(mut openclaw) = load_openclaw_config() {
+            if cleanup_stale_keys(&mut openclaw) {
+                let _ = save_openclaw_config(&openclaw);
             }
         }
     }
@@ -628,6 +634,24 @@ const PROVIDER_URL_MIGRATIONS: &[(&str, &str, &str)] = &[
     ("nicerouter", "https://nicerouter.com", "https://nicerouter.com/v1"),
 ];
 
+/// 清理 openclaw.json 中不应存在的 key（persona/security 属于 manager.json，plugins.entries 已废弃）
+fn cleanup_stale_keys(config: &mut Value) -> bool {
+    let mut changed = false;
+    if let Some(obj) = config.as_object_mut() {
+        changed |= obj.remove("persona").is_some();
+        changed |= obj.remove("security").is_some();
+    }
+    // 移除 plugins.entries（openclaw 新版只认 plugins.allow）
+    if let Some(plugins) = config.pointer_mut("/plugins") {
+        if let Some(obj) = plugins.as_object_mut() {
+            if obj.remove("entries").is_some() {
+                changed = true;
+            }
+        }
+    }
+    changed
+}
+
 /// 检查并迁移已配置 Provider 的过期 baseUrl
 fn migrate_provider_urls(config: &mut Value) -> bool {
     let mut changed = false;
@@ -655,8 +679,10 @@ pub async fn get_ai_config() -> Result<AIConfigOverview, String> {
 
     let mut config = load_openclaw_config()?;
 
-    // 自动迁移过期的 Provider URL
-    if migrate_provider_urls(&mut config) {
+    // 自动迁移过期的 Provider URL，清理废弃 key
+    let mut dirty = migrate_provider_urls(&mut config);
+    dirty |= cleanup_stale_keys(&mut config);
+    if dirty {
         let _ = save_openclaw_config(&config);
     }
     debug!("[AI 配置] 配置内容: {}", serde_json::to_string_pretty(&config).unwrap_or_default());

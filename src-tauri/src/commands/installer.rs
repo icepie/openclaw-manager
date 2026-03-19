@@ -1922,7 +1922,7 @@ pub async fn open_env_terminal() -> Result<String, String> {
 
         // Build env var injections for PowerShell
         // Use single quotes for PATH to avoid quoting issues with backslashes/spaces
-        let win_path = extended_path.replace('/', "\\");
+        let win_path = shell::get_extended_path().replace('/', "\\");
         let mut ps_lines = vec![
             format!("$env:PATH = '{}' + ';' + $env:PATH", win_path.replace('\'', "''")),
         ];
