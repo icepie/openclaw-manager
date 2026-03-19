@@ -467,7 +467,7 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
         </div>
 
         <p className="text-center text-gray-400 dark:text-gray-600 text-xs mt-6">
-          OpenClaw Manager v0.0.7
+          OpenClaw Manager v0.0.8
         </p>
       </motion.div>
     </div>
