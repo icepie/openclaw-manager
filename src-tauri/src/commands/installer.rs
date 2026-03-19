@@ -1836,6 +1836,8 @@ pub async fn open_env_terminal() -> Result<String, String> {
     };
 
     if platform::is_windows() {
+        #[cfg(windows)]
+        {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
 
@@ -1866,7 +1868,10 @@ pub async fn open_env_terminal() -> Result<String, String> {
             .spawn()
             .map_err(|e| format!("启动终端失败: {}", e))?;
 
-        Ok("已打开 PowerShell（OpenClaw 环境已注入）".to_string())
+        return Ok("已打开 PowerShell（OpenClaw 环境已注入）".to_string());
+        }
+        #[cfg(not(windows))]
+        return Err("平台不匹配".to_string());
     } else if platform::is_macos() {
         let mut lines = vec![
             "#!/bin/sh".to_string(),

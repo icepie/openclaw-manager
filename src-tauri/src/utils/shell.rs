@@ -270,13 +270,13 @@ fn get_windows_openclaw_paths() -> Vec<String> {
     let config_dir = platform::get_config_dir();
     let mut paths = Vec::new();
 
-    // Windows: npm -g --prefix puts bin links in node_modules/.bin/
+    // Windows: npm -g --prefix puts bin links in node_modules/.bin/ as .cmd and .ps1
     paths.push(format!("{}/node_modules/.bin/openclaw.cmd", config_dir));
-    paths.push(format!("{}/node_modules/.bin/openclaw", config_dir));
+    paths.push(format!("{}/node_modules/.bin/openclaw.ps1", config_dir));
     // fallback: root-level .cmd or bin/ layout
     paths.push(format!("{}/openclaw.cmd", config_dir));
     paths.push(format!("{}/bin/openclaw.cmd", config_dir));
-    // npm 全局安装
+    // npm global install
     if let Some(home) = dirs::home_dir() {
         paths.push(format!("{}\\AppData\\Roaming\\npm\\openclaw.cmd", home.display()));
     }
