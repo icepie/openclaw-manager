@@ -164,16 +164,16 @@ pub async fn get_or_create_gateway_token() -> Result<String, String> {
     Ok(new_token)
 }
 
-/// 获取 Dashboard URL（带 token）
+/// 打开 Dashboard（运行 openclaw dashboard 命令）
 #[command]
-pub async fn get_dashboard_url() -> Result<String, String> {
-    info!("[Dashboard URL] 获取 Dashboard URL...");
-    
-    let token = get_or_create_gateway_token().await?;
-    let url = format!("http://localhost:18789?token={}", token);
-    
-    info!("[Dashboard URL] ✓ URL: {}...", &url[..50.min(url.len())]);
-    Ok(url)
+pub async fn open_dashboard() -> Result<(), String> {
+    info!("[Dashboard] 运行 openclaw dashboard...");
+    tokio::task::spawn_blocking(|| {
+        crate::utils::shell::run_openclaw(&["dashboard"])
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map(|_| ())
 }
 
 // ============ AI 配置相关命令 ============

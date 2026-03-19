@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { PageType } from '../../App';
 import { RefreshCw, ExternalLink, Loader2, Sun, Moon } from 'lucide-react';
-import { open } from '@tauri-apps/plugin-shell';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../../stores/appStore';
 
@@ -26,10 +25,7 @@ export function Header({ currentPage }: HeaderProps) {
   const handleOpenDashboard = async () => {
     setOpening(true);
     try {
-      const url = await invoke<string>('get_dashboard_url');
-      await open(url);
-    } catch {
-      window.open('http://localhost:18789', '_blank');
+      await invoke('open_dashboard');
     } finally {
       setOpening(false);
     }

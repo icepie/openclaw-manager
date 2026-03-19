@@ -46,7 +46,7 @@ fn main() {
             config::clear_channel_config,
             // Gateway Token
             config::get_or_create_gateway_token,
-            config::get_dashboard_url,
+            config::open_dashboard,
             // AI 配置管理
             config::get_official_providers,
             config::get_ai_config,
