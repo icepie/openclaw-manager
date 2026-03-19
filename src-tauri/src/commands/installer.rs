@@ -1349,6 +1349,9 @@ pub async fn init_openclaw_config() -> Result<InstallResult, String> {
         let default_config = serde_json::json!({
             "gateway": {
                 "mode": "local"
+            },
+            "plugins": {
+                "allow": ["@openclaw-china/dingtalk"]
             }
         });
         if let Err(e) = std::fs::write(&config_file, serde_json::to_string_pretty(&default_config).unwrap()) {
@@ -1357,16 +1360,29 @@ pub async fn init_openclaw_config() -> Result<InstallResult, String> {
             info!("[初始化配置] ✓ openclaw.json 写入成功");
         }
     } else {
-        // 文件已存在，尝试确保 gateway.mode=local
-        info!("[初始化配置] openclaw.json 已存在，尝试设置 gateway.mode...");
+        // 文件已存在，尝试确保 gateway.mode=local 和 plugins.allow
+        info!("[初始化配置] openclaw.json 已存在，尝试设置 gateway.mode 和 plugins.allow...");
         if let Ok(content) = std::fs::read_to_string(&config_file) {
             if let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&content) {
                 if json.get("gateway").and_then(|g| g.get("mode")).is_none() {
                     json["gateway"]["mode"] = serde_json::json!("local");
-                    if let Ok(updated) = serde_json::to_string_pretty(&json) {
-                        let _ = std::fs::write(&config_file, updated);
-                        info!("[初始化配置] ✓ gateway.mode 已设置");
+                }
+                // 确保 plugins.allow 包含 dingtalk
+                let allow = json["plugins"]["allow"].as_array_mut();
+                let dingtalk = "@openclaw-china/dingtalk";
+                match allow {
+                    Some(arr) => {
+                        if !arr.iter().any(|v| v.as_str() == Some(dingtalk)) {
+                            arr.push(serde_json::json!(dingtalk));
+                        }
                     }
+                    None => {
+                        json["plugins"]["allow"] = serde_json::json!([dingtalk]);
+                    }
+                }
+                if let Ok(updated) = serde_json::to_string_pretty(&json) {
+                    let _ = std::fs::write(&config_file, updated);
+                    info!("[初始化配置] ✓ gateway.mode 和 plugins.allow 已设置");
                 }
             }
         }
