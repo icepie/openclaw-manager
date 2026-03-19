@@ -189,38 +189,36 @@ pub async fn run_doctor() -> Result<Vec<DiagnosticResult>, String> {
 /// 测试 AI 连接
 #[command]
 pub async fn test_ai_connection() -> Result<AITestResult, String> {
-    info!("[AI测试] 开始测试 AI 连接...");
-    
-    // 获取当前配置的 provider
+    info!("[AI测试] 开始测试 AI 连接 (openclaw doctor)...");
+
     let start = std::time::Instant::now();
-    
-    // 使用 openclaw 命令测试连接
-    info!("[AI测试] 执行: openclaw agent --local --to +1234567890 --message 回复 OK");
-    let result = shell::run_openclaw(&["agent", "--local", "--to", "+1234567890", "--message", "回复 OK"]);
-    
+    let result = tokio::task::spawn_blocking(|| {
+        crate::utils::shell::run_openclaw(&["doctor"])
+    })
+    .await
+    .map_err(|e| e.to_string())?;
     let latency = start.elapsed().as_millis() as u64;
-    info!("[AI测试] 命令执行完成, 耗时: {}ms", latency);
-    
+
     match result {
         Ok(output) => {
-            debug!("[AI测试] 原始输出: {}", output);
-            // 过滤掉警告信息
             let filtered: String = output
                 .lines()
-                .filter(|l: &&str| !l.contains("ExperimentalWarning"))
+                .filter(|l| !l.contains("ExperimentalWarning"))
                 .collect::<Vec<&str>>()
                 .join("\n");
-            
-            let success = !filtered.to_lowercase().contains("error")
+
+            let lower = filtered.to_lowercase();
+            let success = !lower.contains("error")
+                && !lower.contains("fail")
                 && !filtered.contains("401")
                 && !filtered.contains("403");
-            
+
             if success {
-                info!("[AI测试] ✓ AI 连接测试成功");
+                info!("[AI测试] ✓ AI 连接测试成功, 耗时: {}ms", latency);
             } else {
                 warn!("[AI测试] ✗ AI 连接测试失败: {}", filtered);
             }
-            
+
             Ok(AITestResult {
                 success,
                 provider: "current".to_string(),
@@ -738,7 +736,23 @@ read -p "按回车键关闭..."
             
             #[cfg(target_os = "windows")]
             {
-                return Err("Windows 暂不支持自动启动终端，请手动运行: openclaw channels login --channel whatsapp".to_string());
+                use std::process::Command;
+                use std::os::windows::process::CommandExt;
+                const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+                let openclaw_path = crate::utils::shell::get_openclaw_path()
+                    .ok_or_else(|| "找不到 openclaw 命令".to_string())?;
+                let extended_path = crate::utils::shell::get_extended_path();
+
+                let script = format!(
+                    "set PATH={};%PATH% && start cmd /k \"{}\" channels login --channel whatsapp",
+                    extended_path, openclaw_path
+                );
+                Command::new("cmd")
+                    .args(["/c", &script])
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .spawn()
+                    .map_err(|e| format!("启动终端失败: {}", e))?;
             }
             
             Ok("已在新终端窗口中启动 WhatsApp 登录，请查看弹出的终端窗口并扫描二维码".to_string())

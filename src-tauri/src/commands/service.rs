@@ -82,39 +82,38 @@ fn get_process_stats(pid: u32) -> (Option<f64>, Option<u64>) {
 
     #[cfg(windows)]
     {
-        // WMIC for memory (WorkingSetSize in bytes) and creation time
-        let mem = Command::new("wmic")
-            .args(["process", "where", &format!("ProcessId={}", pid),
-                   "get", "WorkingSetSize", "/value"])
+        // PowerShell Get-Process (works on all Windows versions, wmic is deprecated on Win11)
+        // Output: WorkingSet64_bytes StartTime_ticks
+        let script = format!(
+            "$p = Get-Process -Id {} -ErrorAction SilentlyContinue; if ($p) {{ '{} ' + $p.WorkingSet64 + ' ' + $p.StartTime.Ticks }}",
+            pid, pid
+        );
+        let out = Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
             .creation_flags(CREATE_NO_WINDOW)
-            .output()
-            .ok()
-            .and_then(|o| {
-                String::from_utf8_lossy(&o.stdout)
-                    .lines()
-                    .find(|l| l.starts_with("WorkingSetSize="))
-                    .and_then(|l| l.trim_start_matches("WorkingSetSize=").trim().parse::<f64>().ok())
-                    .map(|b| b / 1024.0 / 1024.0)
-            });
+            .output();
 
-        let uptime = Command::new("wmic")
-            .args(["process", "where", &format!("ProcessId={}", pid),
-                   "get", "CreationDate", "/value"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-            .ok()
-            .and_then(|o| {
-                String::from_utf8_lossy(&o.stdout)
-                    .lines()
-                    .find(|l| l.starts_with("CreationDate="))
-                    .and_then(|l| {
-                        // CreationDate=20240101120000.000000+000
-                        let val = l.trim_start_matches("CreationDate=").trim();
-                        parse_wmic_date(val)
-                    })
-            });
-
-        (mem, uptime)
+        if let Ok(o) = out {
+            let s = String::from_utf8_lossy(&o.stdout);
+            let parts: Vec<&str> = s.split_whitespace().collect();
+            // parts: [pid, working_set_bytes, start_ticks]
+            if parts.len() >= 3 {
+                let mem = parts[1].parse::<f64>().ok().map(|b| b / 1024.0 / 1024.0);
+                let uptime = parts[2].parse::<i64>().ok().and_then(|ticks| {
+                    // .NET ticks: 100-nanosecond intervals since 0001-01-01
+                    // Convert to unix: subtract ticks from 1970-01-01 (621355968000000000 ticks)
+                    let unix_ticks = ticks - 621_355_968_000_000_000i64;
+                    if unix_ticks < 0 { return None; }
+                    let start_secs = unix_ticks / 10_000_000;
+                    let now_secs = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .ok()?.as_secs() as i64;
+                    Some((now_secs - start_secs).max(0) as u64)
+                });
+                return (mem, uptime);
+            }
+        }
+        (None, None)
     }
 }
 
@@ -136,28 +135,6 @@ fn parse_etime(s: &str) -> Option<u64> {
     Some(days * 86400 + secs)
 }
 
-#[cfg(windows)]
-fn parse_wmic_date(s: &str) -> Option<u64> {
-    // 20240101120000.000000+000 → parse as local datetime, diff with now
-    if s.len() < 14 { return None; }
-    let year: i32 = s[0..4].parse().ok()?;
-    let month: u32 = s[4..6].parse().ok()?;
-    let day: u32 = s[6..8].parse().ok()?;
-    let hour: u32 = s[8..10].parse().ok()?;
-    let min: u32 = s[10..12].parse().ok()?;
-    let sec: u32 = s[12..14].parse().ok()?;
-    use std::time::{SystemTime, UNIX_EPOCH};
-    // Simple: compute unix timestamp of creation date
-    // Use chrono if available, otherwise approximate
-    let _ = (year, month, day, hour, min, sec);
-    // Fallback: just return None if chrono not available for date math
-    // chrono is already a dependency via service.rs timeout logging
-    let dt = chrono::NaiveDate::from_ymd_opt(year, month, day)?
-        .and_hms_opt(hour, min, sec)?;
-    let created = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc);
-    let now = chrono::Utc::now();
-    Some((now - created).num_seconds().max(0) as u64)
-}
 #[command]
 pub async fn get_service_status() -> Result<ServiceStatus, String> {
     let pid = check_port_listening(SERVICE_PORT);

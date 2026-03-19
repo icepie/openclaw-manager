@@ -84,17 +84,52 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
     userName: '主人',
     timezone: 'Asia/Shanghai',
   });
+  const [security, setSecurity] = useState({
+    whitelist: false,
+    fileAccess: false,
+  });
   const [saving, setSaving] = useState(false);
   const [showUninstallConfirm, setShowUninstallConfirm] = useState(false);
   const [uninstalling, setUninstalling] = useState(false);
   const [uninstallResult, setUninstallResult] = useState<InstallResult | null>(null);
 
+  useEffect(() => {
+    invoke<Record<string, unknown>>('get_config').then((cfg) => {
+      const persona = cfg?.persona as Record<string, unknown> | undefined;
+      const sec = cfg?.security as Record<string, unknown> | undefined;
+      if (persona) {
+        setIdentity({
+          botName: (persona.bot_name as string) || 'Clawd',
+          userName: (persona.user_name as string) || '主人',
+          timezone: (persona.timezone as string) || 'Asia/Shanghai',
+        });
+      }
+      if (sec) {
+        setSecurity({
+          whitelist: !!(sec.whitelist_enabled),
+          fileAccess: !!(sec.file_access_enabled),
+        });
+      }
+    }).catch(() => {});
+  }, []);
+
   const handleSave = async () => {
     setSaving(true);
     try {
-      // TODO: 保存身份配置
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      alert('设置已保存！');
+      const cfg = await invoke<Record<string, unknown>>('get_config');
+      const updated = {
+        ...cfg,
+        persona: {
+          bot_name: identity.botName,
+          user_name: identity.userName,
+          timezone: identity.timezone,
+        },
+        security: {
+          whitelist_enabled: security.whitelist,
+          file_access_enabled: security.fileAccess,
+        },
+      };
+      await invoke('save_config', { config: updated });
     } catch (e) {
       console.error('保存失败:', e);
     } finally {
@@ -213,7 +248,7 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
                 <p className="text-xs text-gray-400 dark:text-gray-500">只允许白名单用户访问</p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" className="sr-only peer" />
+                <input type="checkbox" className="sr-only peer" checked={security.whitelist} onChange={(e) => setSecurity({ ...security, whitelist: e.target.checked })} />
                 <div className="w-9 h-5 bg-gray-200 dark:bg-white/10 peer-focus:ring-2 peer-focus:ring-claw-500/30 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-claw-500"></div>
               </label>
             </div>
@@ -224,7 +259,7 @@ export function Settings({ onEnvironmentChange }: SettingsProps) {
                 <p className="text-xs text-gray-400 dark:text-gray-500">允许 AI 读写本地文件</p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" className="sr-only peer" />
+                <input type="checkbox" className="sr-only peer" checked={security.fileAccess} onChange={(e) => setSecurity({ ...security, fileAccess: e.target.checked })} />
                 <div className="w-9 h-5 bg-gray-200 dark:bg-white/10 peer-focus:ring-2 peer-focus:ring-claw-500/30 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-claw-500"></div>
               </label>
             </div>

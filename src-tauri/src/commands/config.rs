@@ -104,22 +104,20 @@ pub async fn save_env_value(key: String, value: String) -> Result<String, String
 
 // ============ Gateway Token 命令 ============
 
-/// 生成随机 token
+/// 生成随机 token（使用系统 CSPRNG）
 fn generate_token() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    
-    // 使用时间戳和随机数生成 token
-    let random_part: u64 = (timestamp as u64) ^ 0x5DEECE66Du64;
-    format!("{:016x}{:016x}{:016x}", 
-        random_part, 
-        random_part.wrapping_mul(0x5DEECE66Du64),
-        timestamp as u64
-    )
+    let mut bytes = [0u8; 32];
+    getrandom::getrandom(&mut bytes).unwrap_or_else(|_| {
+        // fallback: xor timestamp into bytes
+        let t = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos() as u64;
+        for (i, b) in bytes.iter_mut().enumerate() {
+            *b = ((t >> (i % 8 * 8)) ^ (i as u64 * 0x9e3779b9)) as u8;
+        }
+    });
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
 /// 获取或生成 Gateway Token
