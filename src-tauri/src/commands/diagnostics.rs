@@ -552,9 +552,36 @@ pub async fn get_system_info() -> Result<SystemInfo, String> {
         shell::run_command_output("sw_vers", &["-productVersion"])
             .unwrap_or_else(|_| "unknown".to_string())
     } else if platform::is_linux() {
-        shell::run_bash_output("cat /etc/os-release | grep VERSION_ID | cut -d'=' -f2 | tr -d '\"'")
-            .unwrap_or_else(|_| "unknown".to_string())
+        // Try /etc/os-release first, fall back to uname
+        std::fs::read_to_string("/etc/os-release")
+            .ok()
+            .and_then(|s| {
+                s.lines()
+                    .find(|l| l.starts_with("VERSION_ID="))
+                    .map(|l| l.trim_start_matches("VERSION_ID=").trim_matches('"').to_string())
+            })
+            .unwrap_or_else(|| {
+                shell::run_command_output("uname", &["-r"]).unwrap_or_else(|_| "unknown".to_string())
+            })
     } else {
+        // Windows: use PowerShell
+        #[cfg(windows)]
+        {
+            use std::process::Command;
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            Command::new("powershell")
+                .args(["-NoProfile", "-NonInteractive", "-Command",
+                       "(Get-WmiObject Win32_OperatingSystem).Version"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output()
+                .ok()
+                .and_then(|o| String::from_utf8(o.stdout).ok())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "unknown".to_string())
+        }
+        #[cfg(not(windows))]
         "unknown".to_string()
     };
     

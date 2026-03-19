@@ -14,33 +14,53 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 const SERVICE_PORT: u16 = 18789;
 
 /// 检测端口是否有服务在监听，返回 PID
-/// 简单直接：端口被占用 = 服务运行中
 fn check_port_listening(port: u16) -> Option<u32> {
     #[cfg(unix)]
     {
-        let output = Command::new("lsof")
-            .args(["-ti", &format!(":{}", port)])
-            .output()
-            .ok()?;
-        
-        if output.status.success() {
-            String::from_utf8_lossy(&output.stdout)
-                .lines()
-                .next()
-                .and_then(|line| line.trim().parse::<u32>().ok())
-        } else {
-            None
+        // Try lsof first
+        if let Ok(output) = Command::new("lsof").args(["-ti", &format!(":{}", port)]).output() {
+            if output.status.success() {
+                if let Some(pid) = String::from_utf8_lossy(&output.stdout)
+                    .lines().next()
+                    .and_then(|l| l.trim().parse::<u32>().ok())
+                {
+                    return Some(pid);
+                }
+            }
         }
+        // Fallback: ss (available on Linux without lsof)
+        if let Ok(output) = Command::new("ss").args(["-tlnp", &format!("sport = :{}", port)]).output() {
+            if output.status.success() {
+                let s = String::from_utf8_lossy(&output.stdout);
+                for line in s.lines().skip(1) {
+                    if line.contains(&format!(":{}", port)) {
+                        // ss output: pid=<n> in the last column
+                        if let Some(pid_part) = line.split("pid=").nth(1) {
+                            if let Some(pid_str) = pid_part.split(',').next() {
+                                if let Ok(pid) = pid_str.trim().parse::<u32>() {
+                                    return Some(pid);
+                                }
+                            }
+                        }
+                        // ss found the port but couldn't parse PID — return 1 as sentinel
+                        return Some(1);
+                    }
+                }
+            }
+        }
+        // Last resort: try TCP connect to check if port is open
+        if std::net::TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok() {
+            return Some(1);
+        }
+        None
     }
-    
+
     #[cfg(windows)]
     {
         let mut cmd = Command::new("netstat");
         cmd.args(["-ano"]);
         cmd.creation_flags(CREATE_NO_WINDOW);
-        
         let output = cmd.output().ok()?;
-        
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             for line in stdout.lines() {
@@ -205,31 +225,32 @@ pub async fn start_service() -> Result<String, String> {
 fn get_pids_on_port(port: u16) -> Vec<u32> {
     #[cfg(unix)]
     {
-        let output = Command::new("lsof")
-            .args(["-ti", &format!(":{}", port)])
-            .output();
-        
-        match output {
-            Ok(out) if out.status.success() => {
-                String::from_utf8_lossy(&out.stdout)
+        // Try lsof first
+        if let Ok(out) = Command::new("lsof").args(["-ti", &format!(":{}", port)]).output() {
+            if out.status.success() {
+                let pids: Vec<u32> = String::from_utf8_lossy(&out.stdout)
                     .lines()
-                    .filter_map(|line| line.trim().parse::<u32>().ok())
-                    .collect()
+                    .filter_map(|l| l.trim().parse::<u32>().ok())
+                    .collect();
+                if !pids.is_empty() { return pids; }
             }
-            _ => vec![],
         }
+        // Fallback: check_port_listening already handles ss/tcp-connect; just reuse it
+        if let Some(pid) = check_port_listening(port) {
+            if pid > 1 { return vec![pid]; }
+        }
+        vec![]
     }
-    
+
     #[cfg(windows)]
     {
         let mut cmd = Command::new("netstat");
         cmd.args(["-ano"]);
         cmd.creation_flags(CREATE_NO_WINDOW);
-        
         match cmd.output() {
             Ok(out) if out.status.success() => {
-                let stdout = String::from_utf8_lossy(&out.stdout);
-                stdout.lines()
+                String::from_utf8_lossy(&out.stdout)
+                    .lines()
                     .filter(|line| line.contains(&format!(":{}", port)) && line.contains("LISTENING"))
                     .filter_map(|line| line.split_whitespace().last())
                     .filter_map(|pid_str| pid_str.parse::<u32>().ok())
