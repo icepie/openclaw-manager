@@ -72,6 +72,7 @@ fn main() {
             installer::install_openclaw,
             installer::cancel_install,
             installer::get_bundle_download_url,
+            installer::select_fastest_proxy,
             installer::init_openclaw_config,
             installer::open_install_terminal,
             installer::open_env_terminal,

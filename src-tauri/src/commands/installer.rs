@@ -904,9 +904,18 @@ fn try_install_openclaw_offline(app: &tauri::AppHandle, install_dir: Option<&Pat
 
 // ── bundle 下载安装 ────────────────────────────────────────────────────────────
 
-/// 返回当前平台对应的 bundle 默认下载 URL
-#[command]
-pub fn get_bundle_download_url() -> String {
+/// 内置 GitHub 代理镜像列表
+const GHPROXY_LIST: &[&str] = &[
+    "https://ghproxy.monkeyray.net/",
+    "https://gh.xxooo.cf/",
+    "https://fastgit.cc/",
+    "https://ghproxy.cxkpro.top/",
+    "https://gh.idayer.com/",
+    "https://gh.h233.eu.org/",
+];
+
+/// 返回不带代理的 GitHub 原始 bundle URL
+fn get_base_github_url() -> String {
     let os = match std::env::consts::OS {
         "windows" => "windows",
         "macos" => "macos",
@@ -918,9 +927,78 @@ pub fn get_bundle_download_url() -> String {
     };
     let ext = if cfg!(target_os = "windows") { "zip" } else { "tar.gz" };
     format!(
-        "https://ghproxy.monkeyray.net/https://github.com/icepie/openclaw-manager/releases/download/dev/openclaw-bundle-{}-{}.{}",
+        "https://github.com/icepie/openclaw-manager/releases/download/dev/openclaw-bundle-{}-{}.{}",
         os, arch, ext
     )
+}
+
+/// 返回当前平台对应的 bundle 默认下载 URL（使用第一个代理）
+#[command]
+pub fn get_bundle_download_url() -> String {
+    format!("{}{}", GHPROXY_LIST[0], get_base_github_url())
+}
+
+/// 并发测试所有代理节点，返回响应最快的完整 URL
+#[command]
+pub async fn select_fastest_proxy() -> String {
+    let base_url = get_base_github_url();
+    info!("[代理测速] 开始测试 {} 个节点...", GHPROXY_LIST.len());
+
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return format!("{}{}", GHPROXY_LIST[0], base_url),
+    };
+
+    let mut handles = Vec::new();
+    for &proxy in GHPROXY_LIST {
+        let url = format!("{}{}", proxy, base_url);
+        let c = client.clone();
+        let proxy_owned = proxy.to_string();
+        handles.push(tokio::spawn(async move {
+            let start = std::time::Instant::now();
+            let result = c.head(&url).send().await;
+            let latency = start.elapsed().as_millis();
+            match result {
+                Ok(resp) if resp.status().as_u16() < 500 => {
+                    info!("[代理测速] {} → {}ms ({})", proxy_owned, latency, resp.status());
+                    Some((proxy_owned, latency))
+                }
+                Ok(resp) => {
+                    info!("[代理测速] {} → 失败 ({})", proxy_owned, resp.status());
+                    None
+                }
+                Err(e) => {
+                    info!("[代理测速] {} → 错误: {}", proxy_owned, e);
+                    None
+                }
+            }
+        }));
+    }
+
+    let mut fastest: Option<(String, u128)> = None;
+    for handle in handles {
+        if let Ok(Some((proxy, latency))) = handle.await {
+            match &fastest {
+                None => fastest = Some((proxy, latency)),
+                Some((_, best)) if latency < *best => fastest = Some((proxy, latency)),
+                _ => {}
+            }
+        }
+    }
+
+    match fastest {
+        Some((proxy, latency)) => {
+            info!("[代理测速] 最快节点: {} ({}ms)", proxy, latency);
+            format!("{}{}", proxy, base_url)
+        }
+        None => {
+            info!("[代理测速] 所有节点不可用，使用默认");
+            format!("{}{}", GHPROXY_LIST[0], base_url)
+        }
+    }
 }
 
 /// 下载进度事件 payload

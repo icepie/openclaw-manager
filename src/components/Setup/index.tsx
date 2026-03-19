@@ -69,6 +69,8 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
   const [localBundlePath, setLocalBundlePath] = useState<string | null>(null);
   const [installStatus, setInstallStatus] = useState('');
 
+  const [selectingProxy, setSelectingProxy] = useState(false);
+
   const checkEnvironment = async () => {
     setupLogger.info('检查系统环境...');
     setChecking(true);
@@ -90,7 +92,10 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
   };
 
   useEffect(() => {
-    invoke<string>('get_bundle_download_url').then(setBundleUrl);
+    setSelectingProxy(true);
+    invoke<string>('select_fastest_proxy')
+      .then(setBundleUrl)
+      .finally(() => setSelectingProxy(false));
     checkEnvironment();
   }, []);
 
@@ -285,7 +290,11 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
             {/* Bundle URL / 本地离线包 */}
             <div className="pt-1 space-y-2">
               <div className="flex items-center justify-between">
-                <p className="text-xs text-gray-400 dark:text-gray-500">Bundle 来源</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1.5">
+                  Bundle 来源
+                  {selectingProxy && <Loader2 className="w-3 h-3 animate-spin" />}
+                  {selectingProxy && <span className="text-claw-400">测速中...</span>}
+                </p>
                 {localBundlePath && (
                   <button onClick={() => setLocalBundlePath(null)} disabled={installing}
                     className="text-xs text-gray-400 hover:text-red-400 transition-colors flex items-center gap-1">
