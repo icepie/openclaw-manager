@@ -22,6 +22,7 @@ import {
   Pencil,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { open as openUrl } from '@tauri-apps/plugin-shell';
 import { aiLogger } from '../../lib/logger';
 
 // ============ 类型定义 ============
@@ -88,6 +89,15 @@ interface AITestResult {
   response: string | null;
   error: string | null;
   latency_ms: number | null;
+}
+
+// ============ Provider 图标组件 ============
+
+function ProviderIcon({ icon, size = 'md' }: { icon: string; size?: 'sm' | 'md' }) {
+  if (icon.startsWith('http')) {
+    return <img src={icon} alt="" className={clsx('object-contain dark:invert', size === 'sm' ? 'w-5 h-5' : 'w-6 h-6')} />;
+  }
+  return <span className={size === 'sm' ? 'text-xl leading-none' : 'text-2xl leading-none'}>{icon}</span>;
 }
 
 // ============ 添加/编辑 Provider 对话框 ============
@@ -301,7 +311,7 @@ function ProviderDialog({ officialProviders, onClose, onSave, editingProvider }:
                         onClick={() => handleSelectOfficial(provider)}
                         className="flex items-center gap-3 p-4 rounded-xl bg-white dark:bg-dark-700 border border-gray-200 dark:border-dark-500 hover:border-claw-500/50 hover:bg-gray-100 dark:hover:bg-dark-600 transition-all text-left group"
                 >
-                  <span className="text-2xl">{provider.icon}</span>
+                  <ProviderIcon icon={provider.icon} />
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-gray-900 dark:text-white truncate">{provider.name}</p>
                           <p className="text-xs text-gray-500 truncate">
@@ -333,6 +343,26 @@ function ProviderDialog({ officialProviders, onClose, onSave, editingProvider }:
                 exit={{ opacity: 0, x: 20 }}
                 className="space-y-5"
               >
+                {/* Provider 信息头部 */}
+                {selectedOfficial && (
+                  <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-dark-700 border border-gray-200 dark:border-dark-500">
+                    <ProviderIcon icon={selectedOfficial.icon} />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-900 dark:text-white">{selectedOfficial.name}</p>
+                      {selectedOfficial.docs_url && (
+                        <button
+                          type="button"
+                          onClick={() => openUrl(selectedOfficial.docs_url!)}
+                          className="text-xs text-claw-400 hover:text-claw-300 flex items-center gap-1 mt-0.5"
+                        >
+                          <ExternalLink size={11} />
+                          前往官网注册/充值
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Provider 名称 */}
                 <div>
                   <label className="block text-sm text-gray-500 dark:text-gray-400 mb-2">
@@ -686,7 +716,7 @@ function ProviderCard({ provider, officialProviders, onSetPrimary, onRefresh, on
         className="flex items-center gap-3 p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-dark-600/50 transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
-        <span className="text-xl">{officialInfo?.icon || '🔌'}</span>
+        <ProviderIcon icon={officialInfo?.icon || '🔌'} size="sm" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h3 className="font-medium text-gray-900 dark:text-white">{provider.name}</h3>
