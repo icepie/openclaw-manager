@@ -1910,23 +1910,7 @@ openclaw --version
 #[command]
 pub async fn open_env_terminal() -> Result<String, String> {
     let config_dir = platform::get_config_dir();
-
-    // 构建完整 PATH（与 get_extended_path 一致，但用于终端展示）
-    let extended_path = shell::get_extended_path();
-
-    // 读取用户 env 文件中的环境变量（API Key 等）
     let env_file = platform::get_env_file_path();
-    let env_exports: Vec<String> = if let Ok(content) = std::fs::read_to_string(&env_file) {
-        content.lines()
-            .filter(|l| !l.trim().is_empty() && !l.trim().starts_with('#'))
-            .map(|l| {
-                let l = l.trim().strip_prefix("export ").unwrap_or(l.trim());
-                format!("export {}", l)
-            })
-            .collect()
-    } else {
-        vec![]
-    };
 
     if platform::is_windows() {
         #[cfg(windows)]
@@ -2007,14 +1991,28 @@ pub async fn open_env_terminal() -> Result<String, String> {
         #[cfg(not(windows))]
         return Err("平台不匹配".to_string());
     } else if platform::is_macos() {
+        let env_vars: Vec<String> = if let Ok(content) = std::fs::read_to_string(&env_file) {
+            content.lines()
+                .filter(|l| !l.trim().is_empty() && !l.trim().starts_with('#'))
+                .map(|l| {
+                    let l = l.trim().strip_prefix("export ").unwrap_or(l.trim());
+                    format!("export {}", l)
+                })
+                .collect()
+        } else { vec![] };
+
         let mut lines = vec![
-            "#!/bin/sh".to_string(),
-            format!("export PATH=\"{}\"", extended_path),
+            "#!/bin/bash".to_string(),
+            // source user rc first so our PATH wins
+            r#"[ -f "$HOME/.zshrc" ] && source "$HOME/.zshrc" 2>/dev/null || true"#.to_string(),
+            r#"[ -f "$HOME/.bashrc" ] && source "$HOME/.bashrc" 2>/dev/null || true"#.to_string(),
+            // prepend our paths so they take priority
+            format!("export PATH=\"{}:$PATH\"", format!("{}/node:{}/bin", config_dir, config_dir)),
         ];
-        lines.extend(env_exports);
-        lines.push(format!("echo '\\033[32mOpenClaw 环境已就绪\\033[0m'"));
+        lines.extend(env_vars);
+        lines.push("echo -e '\\033[32mOpenClaw 环境已就绪\\033[0m'".to_string());
         lines.push(format!("echo '配置目录: {}'", config_dir));
-        lines.push("exec \"$SHELL\" -l".to_string());
+        lines.push("exec \"$SHELL\"".to_string());
 
         let script_path = "/tmp/openclaw_env_terminal.command";
         std::fs::write(script_path, lines.join("\n"))
@@ -2028,12 +2026,24 @@ pub async fn open_env_terminal() -> Result<String, String> {
         // Linux
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
 
+        let env_vars: Vec<String> = if let Ok(content) = std::fs::read_to_string(&env_file) {
+            content.lines()
+                .filter(|l| !l.trim().is_empty() && !l.trim().starts_with('#'))
+                .map(|l| {
+                    let l = l.trim().strip_prefix("export ").unwrap_or(l.trim());
+                    format!("export {}", l)
+                })
+                .collect()
+        } else { vec![] };
+
         let mut lines = vec![
-            "#!/bin/sh".to_string(),
-            format!("export PATH=\"{}\"", extended_path),
+            "#!/bin/bash".to_string(),
+            r#"[ -f "$HOME/.bashrc" ] && source "$HOME/.bashrc" 2>/dev/null || true"#.to_string(),
+            r#"[ -f "$HOME/.zshrc" ] && source "$HOME/.zshrc" 2>/dev/null || true"#.to_string(),
+            format!("export PATH=\"{}/node:{}/bin:$PATH\"", config_dir, config_dir),
         ];
-        lines.extend(env_exports);
-        lines.push(format!("echo '\\033[32mOpenClaw 环境已就绪\\033[0m'"));
+        lines.extend(env_vars);
+        lines.push("echo -e '\\033[32mOpenClaw 环境已就绪\\033[0m'".to_string());
         lines.push(format!("echo '配置目录: {}'", config_dir));
         lines.push(format!("exec \"{}\"", shell));
 

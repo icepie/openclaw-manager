@@ -805,3 +805,17 @@ read -p "按回车键关闭..."
         _ => Err(format!("不支持 {} 的登录向导", channel_type)),
     }
 }
+
+#[command]
+pub async fn check_external_openclaw() -> Result<Option<String>, String> {
+    let config_dir = platform::get_config_dir();
+    let path = match shell::get_openclaw_path() {
+        Some(p) => p,
+        None => return Ok(None),
+    };
+    // 如果路径在 config_dir 下，说明是 manager 安装的
+    if path.starts_with(&config_dir) || path == "openclaw" {
+        return Ok(None);
+    }
+    Ok(Some(path))
+}

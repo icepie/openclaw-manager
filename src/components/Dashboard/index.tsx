@@ -6,7 +6,7 @@ import { QuickActions } from './QuickActions';
 import { SystemInfo } from './SystemInfo';
 import { Setup } from '../Setup';
 import { api, ServiceStatus, isTauri } from '../../lib/tauri';
-import { Terminal, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { Terminal, RefreshCw, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
 import clsx from 'clsx';
 import { EnvironmentStatus } from '../../App';
 
@@ -22,6 +22,8 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
   const [logs, setLogs] = useState<string[]>([]);
   const [logsExpanded, setLogsExpanded] = useState(true);
   const [autoRefreshLogs, setAutoRefreshLogs] = useState(true);
+  const [externalOpenclaw, setExternalOpenclaw] = useState<string | null>(null);
+  const [reinstalling, setReinstalling] = useState(false);
   const logsContainerRef = useRef<HTMLDivElement>(null);
 
   const fetchStatus = async () => {
@@ -53,10 +55,12 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
     fetchStatus();
     fetchLogs();
     if (!isTauri()) return;
-    
+
     const statusInterval = setInterval(fetchStatus, 3000);
     const logsInterval = autoRefreshLogs ? setInterval(fetchLogs, 2000) : null;
-    
+
+    invoke<string | null>('check_external_openclaw').then(setExternalOpenclaw).catch(() => {});
+
     return () => {
       clearInterval(statusInterval);
       if (logsInterval) clearInterval(logsInterval);
@@ -121,6 +125,22 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
     }
   };
 
+  const handleReinstall = async () => {
+    if (!isTauri()) return;
+    setReinstalling(true);
+    try {
+      await invoke('uninstall_openclaw');
+      await invoke('install_openclaw');
+      const ext = await invoke<string | null>('check_external_openclaw');
+      setExternalOpenclaw(ext);
+      onSetupComplete();
+    } catch (e) {
+      console.error('重装失败:', e);
+    } finally {
+      setReinstalling(false);
+    }
+  };
+
   const getLogLineClass = (line: string) => {
     if (line.includes('error') || line.includes('Error') || line.includes('ERROR')) {
       return 'text-red-400';
@@ -164,6 +184,29 @@ export function Dashboard({ envStatus, onSetupComplete }: DashboardProps) {
         {needsSetup && (
           <motion.div variants={itemVariants}>
             <Setup onComplete={onSetupComplete} embedded />
+          </motion.div>
+        )}
+
+        {/* 外部安装警告 */}
+        {externalOpenclaw && (
+          <motion.div variants={itemVariants}>
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40">
+              <AlertTriangle size={16} className="text-amber-500 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-300">检测到外部安装的 OpenClaw</p>
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5 font-mono break-all">{externalOpenclaw}</p>
+                <p className="text-xs text-amber-600/80 dark:text-amber-400/70 mt-1">
+                  当前 OpenClaw 不是由 Manager 安装的，可能导致版本不一致或功能异常，建议卸载重装。
+                </p>
+              </div>
+              <button
+                onClick={handleReinstall}
+                disabled={reinstalling}
+                className="flex-shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 hover:bg-amber-400 text-white transition-colors disabled:opacity-50"
+              >
+                {reinstalling ? '处理中...' : '卸载重装'}
+              </button>
+            </div>
           </motion.div>
         )}
 
