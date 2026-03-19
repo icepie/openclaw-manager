@@ -251,7 +251,10 @@ export function Setup({ onComplete, embedded = false }: SetupProps) {
                 className="space-y-1.5"
               >
                 <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
-                  <span>{installProgress.message}</span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-claw-500 animate-pulse" />
+                    {installProgress.message}
+                  </span>
                   <span>{installProgress.progress}%</span>
                 </div>
                 <div className="w-full h-1.5 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">

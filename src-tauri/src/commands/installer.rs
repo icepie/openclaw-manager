@@ -763,14 +763,14 @@ fn prefix_has_openclaw_binary(prefix: &PathBuf) -> bool {
     candidates.iter().any(|rel| prefix.join(rel).exists())
 }
 
-fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
+fn copy_dir_recursive_counted(src: &Path, dst: &Path, count: &mut usize) -> Result<(), String> {
     fs::create_dir_all(dst).map_err(|e| e.to_string())?;
     for entry in fs::read_dir(src).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
         if src_path.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path)?;
+            copy_dir_recursive_counted(&src_path, &dst_path, count)?;
         } else {
             fs::copy(&src_path, &dst_path).map_err(|e| e.to_string())?;
             #[cfg(unix)]
@@ -779,6 +779,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
                     let _ = fs::set_permissions(&dst_path, meta.permissions());
                 }
             }
+            *count += 1;
         }
     }
     Ok(())
@@ -833,9 +834,10 @@ fn install_openclaw_from_bundle_dir(app: &tauri::AppHandle, bundle_dir: &PathBuf
     let prepared_prefix = bundle_dir.join("prefix");
     if prepared_prefix.exists() {
         info!("[离线安装] 从 bundled prefix snapshot 安装...");
-        emit_progress(app, "copy", 20, "正在复制文件...");
-        copy_dir_recursive(&prepared_prefix, &prefix)?;
-        emit_progress(app, "node", 80, "正在复制 Node.js 运行时...");
+        emit_progress(app, "copy", 20, "正在复制文件（这可能需要一两分钟）...");
+        let mut count = 0usize;
+        copy_dir_recursive_counted(&prepared_prefix, &prefix, &mut count)?;
+        emit_progress(app, "node", 80, &format!("已复制 {} 个文件，正在复制 Node.js 运行时...", count));
         copy_bundled_node_to_prefix(bundle_dir, &prefix)?;
         if prefix_has_openclaw_binary(&prefix) {
             info!("[离线安装] ✓ bundled prefix 安装完成");
@@ -1183,7 +1185,7 @@ async fn download_and_install_bundle(app: &tauri::AppHandle, url: &str, install_
     download_file(app, url, &archive).await?;
 
     info!("[下载安装] 解压 bundle...");
-    emit_progress(app, "extract", 55, "正在解压 bundle...");
+    emit_progress(app, "extract", 55, "正在解压 bundle（文件较多，请耐心等待）...");
     if extract_dir.exists() {
         fs::remove_dir_all(&extract_dir).map_err(|e| e.to_string())?;
     }
